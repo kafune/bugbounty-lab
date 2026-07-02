@@ -15,6 +15,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT/bin/_scope.sh"   # scope-guard compartilhado: have/log/skip + filtros
 PROG="${1:-}"
 [ -z "$PROG" ] && { echo "uso: $0 <programa>"; exit 1; }
 
@@ -26,27 +27,13 @@ OOS="$TDIR/out-of-scope.txt"
 [ -f "$SCOPE" ] || { echo "sem scope.txt em $TDIR — rode h1sync.py antes"; exit 1; }
 mkdir -p "$LDIR"
 
-have() { command -v "$1" >/dev/null 2>&1; }
-log()  { echo -e "\033[1;34m[*]\033[0m $*"; }
-skip() { echo -e "\033[1;33m[skip]\033[0m $1 não instalado — passo pulado"; }
-
-# --- normaliza escopo -------------------------------------------------------
+# --- normaliza escopo (via lib) ---------------------------------------------
 # wildcards (*.dominio) viram dominio raiz para enum; url/host vão direto.
-grep -oE '([a-zA-Z0-9*_-]+\.)+[a-zA-Z]{2,}' "$SCOPE" \
-  | sed 's/^\*\.//' | sort -u > "$LDIR/roots.txt"
+scope_roots "$SCOPE" > "$LDIR/roots.txt"
+OOS_RE="$(scope_oos_regex "$OOS")"
 
-# regex de out-of-scope para filtrar depois
-build_oos_filter() {
-  [ -f "$OOS" ] && [ -s "$OOS" ] || { echo '$^'; return; }
-  sed 's/^\*\.//; s/\./\\./g' "$OOS" | paste -sd'|' -
-}
-OOS_RE="$(build_oos_filter)"
-
-in_scope_filter() {
-  # mantém só o que casa com uma raiz in-scope e NÃO casa com out-of-scope
-  grep -E -f <(sed 's/\./\\./g; s/^/(^|\\.)/; s/$/$/' "$LDIR/roots.txt") \
-    | grep -vE "$OOS_RE" || true
-}
+# mantém só o que casa uma raiz in-scope e NÃO casa out-of-scope
+in_scope_filter() { scope_filter "$LDIR/roots.txt" "$OOS_RE"; }
 
 log "programa: $PROG"
 log "raízes in-scope: $(wc -l < "$LDIR/roots.txt")"

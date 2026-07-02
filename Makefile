@@ -7,12 +7,15 @@ PY := $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 # carrega .env no shell antes de rodar (funciona com ou sem aspas nos valores)
 LOADENV := set -a; [ -f .env ] && . ./.env; set +a;
 
-.PHONY: help sync recon clean venv check
+.PHONY: help sync recon monitor monitor-all status clean venv check
 
 help:
 	@echo "make sync                 -> puxa escopo de TODOS os programas do H1"
 	@echo "make sync HANDLE=acme     -> puxa escopo de um programa"
 	@echo "make recon PROG=acme      -> roda recon do programa (usa scope.txt)"
+	@echo "make monitor PROG=acme    -> re-roda recon e mostra só o que é NOVO (diff)"
+	@echo "make monitor-all          -> monitora todos os programas em targets/"
+	@echo "make status               -> dashboard de achados (todos os programas)"
 	@echo "make clean PROG=acme      -> limpa o loot de um programa"
 	@echo "make check                -> testa a autenticação na API do H1"
 	@echo "make venv                 -> (re)cria .venv e instala requirements"
@@ -39,6 +42,16 @@ sync:
 recon:
 	@test -n "$(PROG)" || { echo "uso: make recon PROG=<handle>"; exit 1; }
 	@$(LOADENV) bash bin/recon.sh $(PROG)
+
+monitor:
+	@test -n "$(PROG)" || { echo "uso: make monitor PROG=<handle>"; exit 1; }
+	@$(LOADENV) bash bin/monitor.sh $(PROG)
+
+monitor-all:
+	@$(LOADENV) bash bin/monitor.sh
+
+status:
+	@$(PY) bin/findings.py summary
 
 clean:
 	@test -n "$(PROG)" || { echo "uso: make clean PROG=<handle>"; exit 1; }

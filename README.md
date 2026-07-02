@@ -4,6 +4,10 @@ Setup de bug bounty montado sobre a fundação **[shuvonsec/claude-bug-bounty](h
 
 - **`bin/h1sync.py`** — puxa programas + escopo estruturado da API do HackerOne e materializa um `scope.txt` por programa em `targets/`.
 - **`bin/recon.sh`** — wrapper de recon com **trava de escopo**: só sonda o que está in-scope, descarta out-of-scope antes de tocar no alvo.
+- **`bin/monitor.sh`** — re-roda o recon e mostra **só o delta** (subdomínio/url/nuclei novo) contra um baseline; dispara notificação. É onde saem os bugs de bounty.
+- **`bin/notify.sh`** — manda o delta pra Telegram/Discord (webhook opcional no `.env`).
+- **`bin/findings.py`** — tracker de achados entre programas (status, severidade, bounty).
+- **`CLAUDE.md` + `.claude/`** — fazem o Claude Code pilotar o lab com scope-guard: `/kickoff`, `/monitor`, `/status`, `/scope-check`.
 
 > Para uso exclusivamente em alvos autorizados — programas de bug bounty in-scope, engajamentos com autorização escrita, ou infraestrutura própria. A trava de escopo existe pra isso não vazar.
 
@@ -11,20 +15,30 @@ Setup de bug bounty montado sobre a fundação **[shuvonsec/claude-bug-bounty](h
 
 ```
 bugbounty-lab/
+├── CLAUDE.md                     # como o Claude Code opera o lab (scope-guard, fluxo)
+├── .claude/                      # settings + slash-commands: /kickoff /monitor /status /scope-check
 ├── vendored/claude-bug-bounty/   # FUNDAÇÃO — submodule do shuvonsec. NÃO editar.
 ├── skills/
 │   ├── custom/
 │   │   └── h1-program-kickoff/   # runbook Day-0 (7 fases) + scripts/ das fases 2–6
 │   └── overrides/                # ajustes que sobrepõem a fundação
 ├── bin/
+│   ├── _scope.sh                 # scope-guard COMPARTILHADO (fonte única)
 │   ├── h1sync.py                 # HackerOne API -> scope.txt   (automatiza a Fase 1 do kickoff)
-│   └── recon.sh                  # recon com scope-guard         (ponte Fase 1 -> Fase 3)
-├── playbook/                     # o "porquê/quando" — aponta pras skills
+│   ├── recon.sh                  # recon com scope-guard         (ponte Fase 1 -> Fase 3)
+│   ├── monitor.sh                # recon + diff contra baseline  (deltas de superfície)
+│   ├── notify.sh                 # Telegram/Discord em delta
+│   ├── scope-check.sh            # pré-flight: host in-scope? (exit 0/1)
+│   ├── findings.py               # tracker de achados entre programas
+│   └── h1report.py               # monta/cria report H1 de um findings/*.md (dry-run default)
+├── templates/report/             # template de report no formato H1
+├── playbook/  docs/OPERATING.md  # o "porquê/quando" — aponta pras skills
 ├── targets/<handle>/             # 🔒 git-ignored — scope.txt por programa
-├── loot/<handle>/                # 🔒 git-ignored — resultados brutos
+├── loot/<handle>/                # 🔒 git-ignored — resultados brutos + .baseline/
+├── findings/<handle>/            # 🔒 git-ignored — achados rastreados (só _EXAMPLE versionado)
 ├── configs/                      # 🔒 git-ignored — .conf com chaves
 ├── setup.sh                      # roda uma vez após clonar
-└── Makefile                      # atalhos: make sync / make recon
+└── Makefile                      # atalhos: make sync / recon / monitor / status
 ```
 
 A fundação entra como **git submodule**: fica claro que é código do shuvonsec, versão X, e não se mistura com o que é seu. Quando ele atualizar, `git submodule update --remote` e pronto — suas customizações em `skills/` não são tocadas.
@@ -67,6 +81,34 @@ bash $K/firebase-storage.sh <bucket.appspot.com> list   # Fase 6: bucket Firebas
 O `recon.sh` roda `subfinder → httpx → katana → nuclei`, cada passo **opcional** (tool ausente é pulada, não quebra). Tudo filtrado contra `scope.txt` / `out-of-scope.txt`. Resultado em `loot/<handle>/`.
 
 Para o "porquê/quando" de cada fase e a tabela de roteamento pras `hunt-*` da fundação, veja `skills/custom/h1-program-kickoff/SKILL.md`.
+
+## Monitoramento contínuo (onde saem os bugs)
+
+```bash
+make recon PROG=acme       # 1ª run semeia o baseline em loot/acme/.baseline/
+make monitor PROG=acme     # re-roda e emite SÓ o novo -> loot/acme/new-<data>-*.txt
+make monitor-all           # itera todos os programas em targets/
+```
+
+Delta não-vazio dispara `bin/notify.sh` (Telegram/Discord, se configurado no `.env`). Para rodar
+sozinho, agende no cron — veja `bin/monitor.cron.example`.
+
+## Rastreio de achados + report
+
+```bash
+bin/findings.py new acme idor-transactions   # cria findings/acme/idor-transactions.md do template
+make status                                   # dashboard: contagem por status + bounty somado
+bin/h1report.py findings/acme/idor-transactions.md            # dry-run: imprime o payload
+bin/h1report.py findings/acme/idor-transactions.md --submit   # cria o report no H1
+```
+
+Achados ficam em `findings/<handle>/*.md` (git-ignored). Antes de `--submit`, passe pelo
+7-Question Gate (`triage-validation` da fundação). Modelo operacional completo em `docs/OPERATING.md`.
+
+## Dirigindo pelo Claude Code
+
+Abra `claude` na raiz e use os slash-commands: `/kickoff <handle>`, `/monitor <handle>`,
+`/status`, `/scope-check <host> <handle>`. O `CLAUDE.md` ensina o agente a respeitar a trava de escopo.
 
 ## Segurança operacional
 

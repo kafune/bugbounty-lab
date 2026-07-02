@@ -1,0 +1,3 @@
+[submodule "vendored/claude-bug-bounty"]
+	path = vendored/claude-bug-bounty
+	url = https://github.com/shuvonsec/claude-bug-bounty

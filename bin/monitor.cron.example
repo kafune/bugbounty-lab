@@ -1,0 +1,11 @@
+# monitor.cron.example — agendamento do monitor contínuo (WSL/Linux).
+# Copie as linhas relevantes para o seu crontab:  crontab -e
+#
+# Ajuste LAB para o caminho absoluto do repo. O `. ./.env` carrega credenciais
+# H1 + webhooks. Redirecione o log para acompanhar.
+
+# Rode todos os programas a cada 6 horas:
+0 */6 * * * cd /home/USER/bugbounty-lab && set -a; . ./.env; set +a; bash bin/monitor.sh >> loot/monitor.log 2>&1
+
+# Ou um programa específico, de hora em hora:
+# 0 * * * * cd /home/USER/bugbounty-lab && set -a; . ./.env; set +a; bash bin/monitor.sh acme >> loot/monitor.log 2>&1
