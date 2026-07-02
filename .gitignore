@@ -1,0 +1,28 @@
+# venv Python
+.venv/
+
+# Segredos e credenciais — NUNCA commitar
+.env
+*.token
+token.txt
+configs/*.conf
+
+# Dados sensíveis por natureza (mantém só o _EXAMPLE)
+targets/*
+!targets/_EXAMPLE
+!targets/_EXAMPLE/**
+loot/*
+!loot/.gitkeep
+
+# Artefatos de recon que scripts geram dentro de subpastas
+js_*/
+src_app/
+out_src/
+
+# NOTA: vendored/claude-bug-bounty é um git SUBMODULE — é rastreado via
+# .gitmodules + gitlink, não como arquivos. NÃO ignorar aqui.
+
+# lixo
+__pycache__/
+*.pyc
+.DS_Store
