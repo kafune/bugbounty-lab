@@ -1,0 +1,9 @@
+# Scripts rodam em Linux (VPS/Ubuntu) — forçar LF sempre, mesmo editando no Windows.
+# Sem isso, um CRLF acidental vira "bad interpreter: /usr/bin/env bash^M" na VPS.
+* text=auto eol=lf
+
+*.sh    text eol=lf
+*.py    text eol=lf
+Makefile text eol=lf
+
+*.png binary
