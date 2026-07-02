@@ -1,0 +1,3 @@
+requests      # bin/h1sync.py — cliente da API HackerOne
+pyjwt         # postman-auth.py --mint — assinatura RS256/HS256
+cryptography  # backend de chave RSA para o pyjwt

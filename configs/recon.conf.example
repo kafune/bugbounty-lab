@@ -1,0 +1,3 @@
+# Copie para configs/recon.conf e ajuste.
+THREADS=50
+NUCLEI_SEVERITY="info,low,medium"

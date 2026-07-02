@@ -1,0 +1,2 @@
+blog.example.com
+legacy.example.com
