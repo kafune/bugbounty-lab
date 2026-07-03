@@ -232,13 +232,20 @@ Lesson ranking from this run: **P2 (provided creds) > P4 (sourcemaps) > P5/P6 (a
   get explicit user authorization first; use a unique non-overwriting name; attempt cleanup.
 
 ## Routing table (hand off after kickoff)
-| Surface found | Skill |
-|---|---|
-| Mindset / "what next" / phase | `bb-methodology`, `bug-bounty` |
-| Exposed sourcemaps / JS secrets | `source-leak-hunt`, `js-secrets-extraction` |
-| OAuth / OIDC / SAML | `hunt-oauth`, `hunt-saml`, `jwt-attack` |
-| Multi-tenant API IDOR/BOLA | `hunt-idor`, `hunt-grpc`, `api-noauth-hunt` |
-| Firebase / Supabase / cloud bucket | `hunt-firebase`, `firebase-supabase-attack`, `hunt-cloud-misconfig` |
-| File upload / RCE / SSRF / XSS | `hunt-file-upload`, `hunt-rce`, `hunt-ssrf`, `hunt-xss` |
-| Subdomain / surface expansion | `hunt-subdomain`, `subdomain-enumeration`, `web-enumeration` |
-| Validate finding / write report | `triage-validation`, `report-writing` |
+Coluna **Ref local** = material técnico (payloads/checklists) em
+`playbook/refs/anthropic-cyber-skills/<slug>.md` — referência, não skill ativa;
+rode `bash bin/scope-check.sh <host> <handle>` antes de aplicar (ver README da pasta).
+
+| Surface found | Skill (fundação) | Ref local (Tier 1) |
+|---|---|---|
+| Mindset / "what next" / phase | `bb-methodology`, `bug-bounty` | — |
+| Exposed sourcemaps / JS secrets | `source-leak-hunt`, `js-secrets-extraction` | `performing-api-inventory-and-discovery`, `exploiting-excessive-data-exposure-in-api` |
+| OAuth / OIDC / SAML | `hunt-oauth`, `hunt-saml`, `jwt-attack` | — (Tier 2: JWT/OAuth ainda não baixados) |
+| Multi-tenant API IDOR/BOLA | `hunt-idor`, `hunt-grpc`, `api-noauth-hunt` | `testing-api-for-broken-object-level-authorization`, `exploiting-idor-vulnerabilities`, `exploiting-broken-function-level-authorization`, `exploiting-mass-assignment-in-rest-apis`, `exploiting-api-injection-vulnerabilities`, `testing-for-broken-access-control` |
+| Firebase / Supabase / cloud bucket | `hunt-firebase`, `firebase-supabase-attack`, `hunt-cloud-misconfig` | `exploiting-server-side-request-forgery` (metadata SSRF) |
+| File upload / RCE / SSRF / XSS | `hunt-file-upload`, `hunt-rce`, `hunt-ssrf`, `hunt-xss` | `exploiting-server-side-request-forgery`, `performing-blind-ssrf-exploitation`, `exploiting-template-injection-vulnerabilities` (SSTI→RCE), `exploiting-insecure-deserialization` |
+| HTTP-layer (smuggling / cache / HPP / CORS) | `web-enumeration` | `exploiting-http-request-smuggling`, `performing-web-cache-poisoning-attack`, `performing-http-parameter-pollution-attack`, `testing-cors-misconfiguration` |
+| Server-side parsing (XXE / prototype pollution) | `hunt-rce` | `testing-for-xxe-injection-vulnerabilities`, `exploiting-prototype-pollution-in-javascript` |
+| Business logic / race condition | `triage-validation` | `exploiting-race-condition-vulnerabilities` |
+| Subdomain / surface expansion | `hunt-subdomain`, `subdomain-enumeration`, `web-enumeration` | — (Tier 3: recon ainda não baixado) |
+| Validate finding / write report | `triage-validation`, `report-writing` | — |

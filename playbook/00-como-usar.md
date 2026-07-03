@@ -14,7 +14,7 @@ esse fluxo. O repo automatiza as partes mecânicas dela:
 | P2 — Provided creds ⭐ | Postman/token fornecido | `postman-auth.py <coll> --mint` |
 | P3 — Fingerprint | classifica cada host | `fingerprint.sh loot/<prog>/live-urls.txt` |
 | P4 — JS + sourcemaps | superfície nos bundles | `js-mine.sh` + `sourcemap.py` |
-| P5 — API + authz | BOLA/IDOR/tenant | manual + `hunt-*` da fundação |
+| P5 — API + authz | BOLA/IDOR/tenant | manual + `hunt-*` da fundação (+ refs em `playbook/refs/anthropic-cyber-skills/`) |
 | P6 — Cloud misconfig | Firebase/GCS/OAuth | `firebase-storage.sh` |
 | P7 — Validate & record | FINDINGS.md + gate | `triage-validation` da fundação |
 
@@ -28,3 +28,6 @@ Detalhe de cada fase, assinaturas de backend e tabela de roteamento pras `hunt-*
 - Ajuste que sobrepõe algo da fundação -> `skills/overrides/`
 - Automação/tooling de nível repo -> `bin/`
 - Scripts que pertencem a uma skill -> junto dela, em `skills/custom/<skill>/scripts/`
+- Referência técnica externa (payloads/checklists de terceiros) -> `playbook/refs/<fonte>/`.
+  Já há `anthropic-cyber-skills/` (Tier 1 web/API, Apache-2.0). Roteamento por classe:
+  tabela em `skills/custom/h1-program-kickoff/SKILL.md` (coluna "Ref local").
