@@ -236,16 +236,19 @@ Coluna **Ref local** = material técnico (payloads/checklists) em
 `playbook/refs/anthropic-cyber-skills/<slug>.md` — referência, não skill ativa;
 rode `bash bin/scope-check.sh <host> <handle>` antes de aplicar (ver README da pasta).
 
-| Surface found | Skill (fundação) | Ref local (Tier 1) |
+| Surface found | Skill (fundação) | Ref local (Tier 1 + Tier 2) |
 |---|---|---|
 | Mindset / "what next" / phase | `bb-methodology`, `bug-bounty` | — |
 | Exposed sourcemaps / JS secrets | `source-leak-hunt`, `js-secrets-extraction` | `performing-api-inventory-and-discovery`, `exploiting-excessive-data-exposure-in-api` |
-| OAuth / OIDC / SAML | `hunt-oauth`, `hunt-saml`, `jwt-attack` | — (Tier 2: JWT/OAuth ainda não baixados) |
+| OAuth / OIDC / JWT | `hunt-oauth`, `hunt-saml`, `jwt-attack` | `exploiting-oauth-misconfiguration`, `testing-oauth2-implementation-flaws`, `testing-jwt-token-security`, `exploiting-jwt-algorithm-confusion-attack`, `performing-jwt-none-algorithm-attack` |
 | Multi-tenant API IDOR/BOLA | `hunt-idor`, `hunt-grpc`, `api-noauth-hunt` | `testing-api-for-broken-object-level-authorization`, `exploiting-idor-vulnerabilities`, `exploiting-broken-function-level-authorization`, `exploiting-mass-assignment-in-rest-apis`, `exploiting-api-injection-vulnerabilities`, `testing-for-broken-access-control` |
+| GraphQL | `hunt-idor`, `api-noauth-hunt` | `performing-graphql-introspection-attack`, `performing-graphql-security-assessment` |
 | Firebase / Supabase / cloud bucket | `hunt-firebase`, `firebase-supabase-attack`, `hunt-cloud-misconfig` | `exploiting-server-side-request-forgery` (metadata SSRF) |
-| File upload / RCE / SSRF / XSS | `hunt-file-upload`, `hunt-rce`, `hunt-ssrf`, `hunt-xss` | `exploiting-server-side-request-forgery`, `performing-blind-ssrf-exploitation`, `exploiting-template-injection-vulnerabilities` (SSTI→RCE), `exploiting-insecure-deserialization` |
+| File upload / RCE / SSRF / XSS | `hunt-file-upload`, `hunt-rce`, `hunt-ssrf`, `hunt-xss` | `exploiting-server-side-request-forgery`, `performing-blind-ssrf-exploitation`, `exploiting-template-injection-vulnerabilities` (SSTI→RCE), `exploiting-insecure-deserialization`, `testing-for-xss-vulnerabilities`, `testing-for-xss-vulnerabilities-with-burpsuite` |
+| SQL / NoSQL injection | `hunt-rce`, `api-noauth-hunt` | `exploiting-sql-injection-vulnerabilities`, `exploiting-sql-injection-with-sqlmap`, `performing-second-order-sql-injection`, `exploiting-nosql-injection-vulnerabilities` |
 | HTTP-layer (smuggling / cache / HPP / CORS) | `web-enumeration` | `exploiting-http-request-smuggling`, `performing-web-cache-poisoning-attack`, `performing-http-parameter-pollution-attack`, `testing-cors-misconfiguration` |
-| Server-side parsing (XXE / prototype pollution) | `hunt-rce` | `testing-for-xxe-injection-vulnerabilities`, `exploiting-prototype-pollution-in-javascript` |
+| Server-side parsing (XXE / prototype pollution / type juggling) | `hunt-rce` | `testing-for-xxe-injection-vulnerabilities`, `exploiting-prototype-pollution-in-javascript`, `exploiting-type-juggling-vulnerabilities` |
+| WebSocket / directory traversal / broken-link | `web-enumeration` | `exploiting-websocket-vulnerabilities`, `performing-directory-traversal-testing`, `exploiting-broken-link-hijacking` |
 | Business logic / race condition | `triage-validation` | `exploiting-race-condition-vulnerabilities` |
-| Subdomain / surface expansion | `hunt-subdomain`, `subdomain-enumeration`, `web-enumeration` | — (Tier 3: recon ainda não baixado) |
+| Subdomain / surface expansion | `hunt-subdomain`, `subdomain-enumeration`, `web-enumeration` | — (Tier 3: recon ainda não baixado; sobrepõe `make recon`) |
 | Validate finding / write report | `triage-validation`, `report-writing` | — |

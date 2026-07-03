@@ -1,4 +1,4 @@
-# Referências técnicas — Anthropic-Cybersecurity-Skills (Tier 1 web/API)
+# Referências técnicas — Anthropic-Cybersecurity-Skills (Tier 1 + Tier 2 web/API)
 
 **O que é:** subconjunto curado (Tier 1) de skills web/API do repositório comunitário
 [`mukul975/Anthropic-Cybersecurity-Skills`](https://github.com/mukul975/Anthropic-Cybersecurity-Skills)
@@ -18,7 +18,7 @@ de aplicar qualquer coisa daqui.
 - **Classes que não valem sessão H1** (puladas de propósito na curadoria): open-redirect sem impacto,
   CSP best-practice, WAF-bypass unauth, DoS / rate-limit unauth, clickjacking sem ação.
 
-## Conteúdo (19 refs)
+## Conteúdo — Tier 1 (19 refs)
 
 ### SSRF
 - `exploiting-server-side-request-forgery.md`
@@ -51,8 +51,37 @@ de aplicar qualquer coisa daqui.
 - `exploiting-race-condition-vulnerabilities.md`
 - `testing-cors-misconfiguration.md`
 
+## Conteúdo — Tier 2 (17 refs)
+
+### Auth / token (JWT, OAuth)
+- `testing-jwt-token-security.md`
+- `exploiting-jwt-algorithm-confusion-attack.md`
+- `performing-jwt-none-algorithm-attack.md`
+- `exploiting-oauth-misconfiguration.md`
+- `testing-oauth2-implementation-flaws.md`
+
+### GraphQL
+- `performing-graphql-introspection-attack.md`
+- `performing-graphql-security-assessment.md`
+
+### XSS
+- `testing-for-xss-vulnerabilities.md`
+- `testing-for-xss-vulnerabilities-with-burpsuite.md`
+
+### SQL / NoSQL injection
+- `exploiting-sql-injection-vulnerabilities.md`
+- `exploiting-sql-injection-with-sqlmap.md`
+- `performing-second-order-sql-injection.md`
+- `exploiting-nosql-injection-vulnerabilities.md`
+
+### Outros (WebSocket, type juggling, traversal, broken-link)
+- `exploiting-websocket-vulnerabilities.md`
+- `exploiting-type-juggling-vulnerabilities.md`
+- `performing-directory-traversal-testing.md`
+- `exploiting-broken-link-hijacking.md`
+
 ## Procedência e atualização
 
 Baixados de `raw.githubusercontent.com/mukul975/Anthropic-Cybersecurity-Skills/main/skills/<slug>/SKILL.md`.
-Para atualizar, rebaixe os mesmos slugs e reinjete o banner. Tier 2/3 (JWT/OAuth, GraphQL, XSS,
-recon) ficaram de fora desta leva — ver a avaliação no histórico do lab.
+Para atualizar, rebaixe os mesmos slugs e reinjete o banner. Tier 3 (recon: subfinder,
+DNS/zone-transfer, OSINT) ainda fora — sobrepõe `make recon`; puxar sob demanda.
