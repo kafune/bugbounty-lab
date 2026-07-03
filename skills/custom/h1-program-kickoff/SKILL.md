@@ -250,5 +250,5 @@ rode `bash bin/scope-check.sh <host> <handle>` antes de aplicar (ver README da p
 | Server-side parsing (XXE / prototype pollution / type juggling) | `hunt-rce` | `testing-for-xxe-injection-vulnerabilities`, `exploiting-prototype-pollution-in-javascript`, `exploiting-type-juggling-vulnerabilities` |
 | WebSocket / directory traversal / broken-link | `web-enumeration` | `exploiting-websocket-vulnerabilities`, `performing-directory-traversal-testing`, `exploiting-broken-link-hijacking` |
 | Business logic / race condition | `triage-validation` | `exploiting-race-condition-vulnerabilities` |
-| Subdomain / surface expansion | `hunt-subdomain`, `subdomain-enumeration`, `web-enumeration` | — (Tier 3: recon ainda não baixado; sobrepõe `make recon`) |
+| Subdomain / surface expansion | `hunt-subdomain`, `subdomain-enumeration`, `web-enumeration` | `performing-subdomain-enumeration-with-subfinder`, `performing-dns-enumeration-and-zone-transfer`, `conducting-external-reconnaissance-with-osint` — já destilados em `make recon` (crt.sh + AXFR + gau) |
 | Validate finding / write report | `triage-validation`, `report-writing` | — |

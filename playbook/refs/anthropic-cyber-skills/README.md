@@ -1,4 +1,4 @@
-# Referências técnicas — Anthropic-Cybersecurity-Skills (Tier 1 + Tier 2 web/API)
+# Referências técnicas — Anthropic-Cybersecurity-Skills (Tier 1 + 2 + 3)
 
 **O que é:** subconjunto curado (Tier 1) de skills web/API do repositório comunitário
 [`mukul975/Anthropic-Cybersecurity-Skills`](https://github.com/mukul975/Anthropic-Cybersecurity-Skills)
@@ -80,8 +80,18 @@ de aplicar qualquer coisa daqui.
 - `performing-directory-traversal-testing.md`
 - `exploiting-broken-link-hijacking.md`
 
+## Conteúdo — Tier 3 (3 refs, recon)
+
+Fonte das técnicas destiladas no `bin/recon.sh` (crt.sh, registros DNS + AXFR,
+URLs históricas via gau/waybackurls). Os docs ficam como referência do "porquê".
+
+- `performing-subdomain-enumeration-with-subfinder.md`
+- `performing-dns-enumeration-and-zone-transfer.md`
+- `conducting-external-reconnaissance-with-osint.md`
+
 ## Procedência e atualização
 
 Baixados de `raw.githubusercontent.com/mukul975/Anthropic-Cybersecurity-Skills/main/skills/<slug>/SKILL.md`.
-Para atualizar, rebaixe os mesmos slugs e reinjete o banner. Tier 3 (recon: subfinder,
-DNS/zone-transfer, OSINT) ainda fora — sobrepõe `make recon`; puxar sob demanda.
+Para atualizar, rebaixe os mesmos slugs e reinjete o banner. Pack completo: 39 refs
+(19 Tier 1 + 17 Tier 2 + 3 Tier 3). Ideias ainda não portadas p/ `recon.sh` (rodar à mão):
+DNS brute-force com wordlist (puredns/shuffledns), Shodan/Censys, cloud-bucket enum.
