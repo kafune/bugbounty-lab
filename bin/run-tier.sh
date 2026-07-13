@@ -110,7 +110,7 @@ tier2_one() {
     [ -z "$u" ] && continue
     host_in_scope "$u" "$scope" "$oos" && printf '%s\n' "$u" >> "$safe"
   done < "$live"
-  local n; n="$(grep -c . "$safe" 2>/dev/null || echo 0)"
+  local n; n="$(grep -c . "$safe" 2>/dev/null)" || n=0
   [ "$n" -eq 0 ] && { log "$h: 0 alvos in-scope após guard"; return; }
 
   if ! have nuclei; then skip nuclei; return; fi
@@ -122,7 +122,7 @@ tier2_one() {
 
   local new_out; new_out="$ldir/new-nuclei-$(basename "$safe").txt"
   diff_new "$ldir/nuclei.txt" "$bdir/nuclei.txt" > "$new_out" 2>/dev/null || true
-  local delta; delta="$(grep -c . "$new_out" 2>/dev/null || echo 0)"
+  local delta; delta="$(grep -c . "$new_out" 2>/dev/null)" || delta=0
 
   if [ "$delta" -gt 0 ]; then
     ok "$h: $delta achado(s) nuclei NOVO(s)"
