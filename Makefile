@@ -7,7 +7,9 @@ PY := $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 # carrega .env no shell antes de rodar (funciona com ou sem aspas nos valores)
 LOADENV := set -a; [ -f .env ] && . ./.env; set +a;
 
-.PHONY: help sync recon monitor monitor-all status clean venv check
+.PHONY: help sync recon monitor monitor-all status clean venv check \
+        scope-monitor discover discover-dry catalog tier1 tier2 \
+        install-timers loop-status
 
 help:
 	@echo "make sync                 -> puxa escopo de TODOS os programas do H1"
@@ -16,6 +18,14 @@ help:
 	@echo "make monitor PROG=acme    -> re-roda recon e mostra só o que é NOVO (diff)"
 	@echo "make monitor-all          -> monitora todos os programas em targets/"
 	@echo "make status               -> dashboard de achados (todos os programas)"
+	@echo "make scope-monitor        -> diff de escopo (host in-scope novo) em todos os targets"
+	@echo "make discover             -> discover.py: atualiza catalog, notifica NEW/EXPANDED"
+	@echo "make discover-dry         -> discover --dry-run (não notifica, só imprime)"
+	@echo "make catalog              -> imprime top-N do catálogo com score (tabela)"
+	@echo "make tier1                -> run-tier.sh 1 manual (subfinder+httpx nos top-N)"
+	@echo "make tier2                -> run-tier.sh 2 manual (nuclei serializado nos top-N)"
+	@echo "make install-timers       -> instala units systemd (bblab-tier0/1/2)"
+	@echo "make loop-status          -> status dos 3 timers + próxima execução"
 	@echo "make clean PROG=acme      -> limpa o loot de um programa"
 	@echo "make check                -> testa a autenticação na API do H1"
 	@echo "make venv                 -> (re)cria .venv e instala requirements"
@@ -52,6 +62,9 @@ monitor-all:
 
 status:
 	@$(PY) bin/findings.py summary
+
+scope-monitor:
+	@$(LOADENV) bash bin/scope-monitor.sh $(PROG)
 
 clean:
 	@test -n "$(PROG)" || { echo "uso: make clean PROG=<handle>"; exit 1; }
