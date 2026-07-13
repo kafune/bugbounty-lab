@@ -66,6 +66,16 @@ status:
 scope-monitor:
 	@$(LOADENV) bash bin/scope-monitor.sh $(PROG)
 
+discover:
+	@$(LOADENV) $(PY) bin/discover.py
+
+discover-dry:
+	@$(LOADENV) $(PY) bin/discover.py --dry-run
+
+catalog:
+	@test -f state/catalog.json || { echo "sem state/catalog.json — rode 'make discover' antes"; exit 1; }
+	@$(PY) bin/score.py --stored < state/catalog.json
+
 clean:
 	@test -n "$(PROG)" || { echo "uso: make clean PROG=<handle>"; exit 1; }
 	@rm -rf loot/$(PROG) && echo "loot/$(PROG) limpo"
