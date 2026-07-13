@@ -128,7 +128,10 @@ fi
 # --- 3. endpoints: crawl (katana) + histórico (gau/waybackurls) -------------
 : > "$LDIR/urls.raw"
 
-if have katana; then
+# RECON_NO_KATANA=1 pula o crawl (usado pelo Tier 1, que é só descoberta leve).
+if [ "${RECON_NO_KATANA:-}" = 1 ]; then
+  skip "katana (RECON_NO_KATANA=1)"
+elif have katana; then
   log "katana (crawl)..."
   katana -list "$LDIR/live-urls.txt" -silent -jc -d 2 2>/dev/null \
     | in_scope_filter >> "$LDIR/urls.raw" || true
@@ -153,7 +156,11 @@ if [ -s "$LDIR/urls.raw" ]; then
 fi
 
 # --- 4. nuclei (baixa severidade primeiro, sem barulho) ---------------------
-if have nuclei; then
+# RECON_NO_NUCLEI=1 pula o nuclei (Tier 1 não roda scan pesado; fica no Tier 2,
+# serializado). Backward-compat: sem a env, comportamento é o de sempre.
+if [ "${RECON_NO_NUCLEI:-}" = 1 ]; then
+  skip "nuclei (RECON_NO_NUCLEI=1)"
+elif have nuclei; then
   log "nuclei (info,low,medium)..."
   nuclei -l "$LDIR/live-urls.txt" -severity info,low,medium \
     -o "$LDIR/nuclei.txt" -silent 2>/dev/null || true

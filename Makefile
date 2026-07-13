@@ -76,6 +76,19 @@ catalog:
 	@test -f state/catalog.json || { echo "sem state/catalog.json — rode 'make discover' antes"; exit 1; }
 	@$(PY) bin/score.py --stored < state/catalog.json
 
+tier1:
+	@$(LOADENV) bash bin/run-tier.sh 1
+
+tier2:
+	@$(LOADENV) bash bin/run-tier.sh 2
+
+install-timers:
+	@bash deploy/systemd/install.sh
+
+loop-status:
+	@systemctl list-timers 'bblab-*' --no-pager 2>/dev/null || echo "systemd indisponível"
+	@systemctl status bblab-tier0.timer bblab-tier1.timer bblab-tier2.timer --no-pager 2>/dev/null || true
+
 clean:
 	@test -n "$(PROG)" || { echo "uso: make clean PROG=<handle>"; exit 1; }
 	@rm -rf loot/$(PROG) && echo "loot/$(PROG) limpo"

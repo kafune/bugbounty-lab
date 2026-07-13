@@ -1,0 +1,17 @@
+[Unit]
+Description=bugbounty-lab Tier 0 (discover + score + scope-monitor)
+Documentation=file://__BBLAB_ROOT__/README.md
+After=network-online.target
+Wants=network-online.target
+OnFailure=bblab-notify-failure@%n.service
+
+[Service]
+Type=oneshot
+User=__BBLAB_USER__
+WorkingDirectory=__BBLAB_ROOT__
+ExecStart=/usr/bin/env bash __BBLAB_ROOT__/bin/run-tier.sh 0
+# não competir com o resto da VPS
+Nice=10
+IOSchedulingClass=idle
+# systemd não roda uma 2ª instância da mesma unit enquanto a 1ª está viva:
+# isso já garante "sem sobreposição" por tier.

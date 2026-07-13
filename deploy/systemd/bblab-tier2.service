@@ -1,0 +1,19 @@
+[Unit]
+Description=bugbounty-lab Tier 2 (nuclei serializado nos top-N)
+Documentation=file://__BBLAB_ROOT__/README.md
+After=network-online.target
+Wants=network-online.target
+OnFailure=bblab-notify-failure@%n.service
+
+[Service]
+Type=oneshot
+User=__BBLAB_USER__
+WorkingDirectory=__BBLAB_ROOT__
+ExecStart=/usr/bin/env bash __BBLAB_ROOT__/bin/run-tier.sh 2
+# Tier 2 é o mais pesado: prioridade baixa de CPU e I/O idle.
+# run-tier.sh ainda serializa os nuclei com um flock global (1 por vez).
+Nice=15
+IOSchedulingClass=idle
+CPUWeight=20
+# um ciclo completo de nuclei nos top-N pode demorar; timeout generoso.
+TimeoutStartSec=6h
