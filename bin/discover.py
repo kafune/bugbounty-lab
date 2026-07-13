@@ -288,29 +288,37 @@ def diff_signals(catalog, prev):
 # ---------------------------------------------------------------------------
 # scoring + tier
 # ---------------------------------------------------------------------------
-def apply_scores(catalog, top_n, score_min):
-    now = datetime.now(timezone.utc)
-    order = scorelib.rank(catalog, now)  # grava p['score'] e devolve ordenado
-    # boost por programa (Fase D) refina a ordenação, se disponível
+def _effective(handle, base):
+    """score + boost (Fase D), com fallback pro base se não houver estado."""
     try:
         import state as statelib
-        order = sorted(
-            catalog.items(),
-            key=lambda kv: statelib.effective_score(kv[0], kv[1]["score"]),
-            reverse=True,
-        )
-        order = [(h, p["score"]) for h, p in order]
+        return statelib.effective_score(handle, base)
     except Exception:
-        pass
+        return base
+
+
+def apply_scores(catalog, top_n, score_min):
+    now = datetime.now(timezone.utc)
+    scorelib.rank(catalog, now)  # grava p['score'] base em cada programa
+    # ordena e corta o top-N pelo score EFETIVO (base + boost do feedback loop):
+    # programa que dá bug sobe; programa morto cai e sai do top-N sozinho.
+    order = sorted(
+        catalog.keys(),
+        key=lambda h: _effective(h, catalog[h]["score"]),
+        reverse=True,
+    )
     eligible = 0
-    for handle, sc in order:
+    ranked = []
+    for handle in order:
         p = catalog[handle]
-        if eligible < top_n and p["score"] >= score_min:
+        eff = _effective(handle, p["score"])
+        if eligible < top_n and eff >= score_min:
             p["tier_eligible"] = True
             eligible += 1
         else:
             p["tier_eligible"] = False
-    return order
+        ranked.append((handle, p["score"]))
+    return ranked
 
 
 # ---------------------------------------------------------------------------
