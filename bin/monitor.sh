@@ -50,7 +50,7 @@ monitor_one() {
     local out new_count
     out="$ldir/new-$DATE-${f%.txt}.txt"
     diff_new "$ldir/$f" "$bdir/$f" > "$out" || true
-    new_count="$(grep -c . "$out" 2>/dev/null || echo 0)"
+    new_count="$(grep -c . "$out" 2>/dev/null)" || new_count=0
     if [ "$new_count" -gt 0 ]; then
       delta_total=$((delta_total + new_count))
       summary="${summary}  +${new_count} ${f%.txt}\n"
