@@ -41,6 +41,7 @@ except ImportError:
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import score as scorelib  # noqa: E402
+from scope_writer import write_scope  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 STATE = ROOT / "state"
@@ -313,6 +314,32 @@ def apply_scores(catalog, top_n, score_min):
 
 
 # ---------------------------------------------------------------------------
+# materialização pro pipeline existente (recon.sh/monitor.sh consomem sem mudar)
+# ---------------------------------------------------------------------------
+def materialize(catalog):
+    """tier_eligible viram targets/<handle>/scope.txt via o writer compartilhado.
+    NUNCA sobrescreve um dir gerido pelo h1sync/manual (tem scope.raw.json e
+    não carrega nosso marcador .discovered)."""
+    n = 0
+    for handle, p in catalog.items():
+        if not p.get("tier_eligible"):
+            continue
+        d = TARGETS / handle
+        if d.exists() and not (d / ".discovered").exists() \
+           and (d / "scope.raw.json").exists():
+            print(f"  [skip] {handle}: dir gerido externamente, não sobrescrevo")
+            continue
+        marker = json.dumps({
+            "platform": p["platform"], "score": p["score"],
+            "url": p["url"], "private": p["private"],
+        })
+        write_scope(handle, p["scope_in"], p["scope_out"],
+                    raw=None, root=TARGETS, marker=marker)
+        n += 1
+    return n
+
+
+# ---------------------------------------------------------------------------
 # notify
 # ---------------------------------------------------------------------------
 def notify(new_programs, expanded, catalog):
@@ -389,6 +416,9 @@ def main():
         prev_path.write_text(json.dumps(prev, indent=2), encoding="utf-8")
     cat_path.write_text(json.dumps(out, indent=2), encoding="utf-8")
     print(f"\nCatálogo gravado: {cat_path.relative_to(ROOT)}")
+
+    materialized = materialize(catalog)
+    print(f"Materializados {materialized} programa(s) tier_eligible em targets/")
 
     notify(new_programs, expanded, catalog)
 

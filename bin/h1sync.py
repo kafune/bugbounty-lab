@@ -21,7 +21,6 @@ Saída por programa (em targets/<handle>/):
   scope.raw.json     -> resposta bruta da API (fidelidade total)
 """
 import argparse
-import json
 import os
 import sys
 import time
@@ -32,6 +31,9 @@ try:
     import requests
 except ImportError:
     sys.exit("Faltou dependência: pip install requests")
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from scope_writer import write_scope  # writer de escopo compartilhado
 
 BASE = "https://api.hackerone.com/v1/hackers"
 ROOT = Path(__file__).resolve().parent.parent
@@ -96,11 +98,7 @@ def sync_program(handle, creds, only_bounty=False, types=None):
             continue
         (in_scope if a.get("eligible_for_submission") else out_scope).append(ident)
 
-    d = TARGETS / handle
-    d.mkdir(parents=True, exist_ok=True)
-    (d / "scope.txt").write_text("\n".join(sorted(set(in_scope))) + "\n")
-    (d / "out-of-scope.txt").write_text("\n".join(sorted(set(out_scope))) + "\n")
-    (d / "scope.raw.json").write_text(json.dumps(scopes, indent=2))
+    write_scope(handle, in_scope, out_scope, raw=scopes)
     print(f"  [{handle}] in-scope={len(set(in_scope))}  out={len(set(out_scope))}")
 
 
