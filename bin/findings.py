@@ -62,6 +62,15 @@ def cmd_new(handle, slug):
     dest.write_text(body, encoding="utf-8")
     print(f"criado: {dest.relative_to(ROOT)}")
 
+    # feedback: programa que dá bug sobe no ranking e é revisitado mais.
+    try:
+        sys.path.insert(0, str(ROOT / "bin"))
+        import state as statelib
+        statelib.record_finding(handle)
+        print(f"  boost de finding aplicado a state/{handle}.json")
+    except Exception:
+        pass
+
 
 def cmd_list(handle=None):
     rows = list(iter_findings(handle))

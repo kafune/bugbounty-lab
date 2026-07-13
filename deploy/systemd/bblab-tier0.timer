@@ -1,0 +1,10 @@
+[Unit]
+Description=bugbounty-lab Tier 0 timer (a cada 6h)
+
+[Timer]
+OnCalendar=*-*-* 00/6:00:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

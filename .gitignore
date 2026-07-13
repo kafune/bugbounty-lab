@@ -19,6 +19,10 @@ findings/*
 !findings/_EXAMPLE
 !findings/_EXAMPLE/**
 
+# Estado operacional do loop (catálogo, baseline de escopo, boost por programa).
+# Nasce git-ignored — nunca versionar escopo/score/IP da VPS.
+state/
+
 # Templates/padrões próprios — versiona só o README de cada dir
 nuclei-templates/*
 !nuclei-templates/README.md

@@ -24,13 +24,21 @@ bugbounty-lab/
 │   └── overrides/                # ajustes que sobrepõem a fundação
 ├── bin/
 │   ├── _scope.sh                 # scope-guard COMPARTILHADO (fonte única)
+│   ├── scope_writer.py           # writer de targets/<handle>/ COMPARTILHADO (h1sync + discover)
 │   ├── h1sync.py                 # HackerOne API -> scope.txt   (automatiza a Fase 1 do kickoff)
+│   ├── discover.py               # descoberta multi-plataforma -> state/catalog.json (NEW/EXPANDED)
+│   ├── score.py                  # heurística de priorização de programa (importável)
+│   ├── scope-monitor.sh          # diff de ESCOPO (host in-scope novo) — Tier 0
+│   ├── state.py                  # estado por programa + feedback loop (boost)
+│   ├── run-tier.sh               # runner do loop contínuo (0/1/2) com contenção de VPS
 │   ├── recon.sh                  # recon com scope-guard         (ponte Fase 1 -> Fase 3)
 │   ├── monitor.sh                # recon + diff contra baseline  (deltas de superfície)
 │   ├── notify.sh                 # Telegram/Discord em delta
 │   ├── scope-check.sh            # pré-flight: host in-scope? (exit 0/1)
 │   ├── findings.py               # tracker de achados entre programas
 │   └── h1report.py               # monta/cria report H1 de um findings/*.md (dry-run default)
+├── deploy/systemd/               # units bblab-tier0/1/2 + install.sh (loop contínuo na VPS)
+├── state/                        # 🔒 git-ignored — catalog.json, boost por programa, baseline de escopo
 ├── templates/report/             # template de report no formato H1
 ├── playbook/  docs/OPERATING.md  # o "porquê/quando" — aponta pras skills
 ├── targets/<handle>/             # 🔒 git-ignored — scope.txt por programa
@@ -38,7 +46,7 @@ bugbounty-lab/
 ├── findings/<handle>/            # 🔒 git-ignored — achados rastreados (só _EXAMPLE versionado)
 ├── configs/                      # 🔒 git-ignored — .conf com chaves
 ├── setup.sh                      # roda uma vez após clonar
-└── Makefile                      # atalhos: make sync / recon / monitor / status
+└── Makefile                      # atalhos: sync/recon/monitor/status + discover/catalog/tier1/tier2
 ```
 
 A fundação entra como **git submodule**: fica claro que é código do shuvonsec, versão X, e não se mistura com o que é seu. Quando ele atualizar, `git submodule update --remote` e pronto — suas customizações em `skills/` não são tocadas.
@@ -93,6 +101,50 @@ make monitor-all           # itera todos os programas em targets/
 Delta não-vazio dispara `bin/notify.sh` (Telegram/Discord, se configurado no `.env`). Para rodar
 sozinho, agende no cron — veja `bin/monitor.cron.example`.
 
+## Descoberta multi-plataforma + priorização
+
+Antes de escolher programa na mão, deixe a esteira descobrir e ranquear superfície fresca.
+`bin/discover.py` baixa o catálogo público (HackerOne/Bugcrowd/Intigriti via
+[bounty-targets-data](https://github.com/arkadiyt/bounty-targets-data)), mescla com os privados
+que o `h1sync.py` já materializou, e ranqueia por `bin/score.py`
+(*freshness · scope_size · payout − age − competition*; wildcard pesa 5×).
+
+```bash
+make discover-dry          # baixa e ranqueia, sem gravar/notificar (preview)
+make discover              # atualiza state/catalog.json, materializa top-N, notifica NEW/EXPANDED
+make catalog               # imprime o top-N com score (tabela)
+make scope-monitor         # diff de ESCOPO: host in-scope novo em todos os targets/
+```
+
+Dois sinais de alto valor saem no delta contra a run anterior: **`NEW_PROGRAM`** (handle inédito)
+e **`SCOPE_EXPANDED`** (in-scope cresceu). Os `TOP_N` (default 15) viram `targets/<handle>/scope.txt`
+automaticamente — `recon.sh`/`monitor.sh` consomem sem mudança. Configuração no `.env`
+(`DISCOVER_PLATFORMS`, `TOP_N`, `SCORE_MIN`).
+
+O ranking **aprende**: delta no monitor sobe o `boost` do programa, achado válido (`findings.py`)
+sobe muito, e runs vazias seguidas o derrubam do top-N. Estado por programa em `state/<handle>.json`.
+
+## Loop contínuo na VPS (systemd)
+
+Três tiers por cadência/custo, com contenção pra VPS de 4 vCPU (`flock` por handle, Tier 2 com
+`nuclei` **serializado** por `flock` global, `Nice`/`ionice` idle, rate-limit conservador):
+
+| Tier | Cadência | Trabalho |
+|------|----------|----------|
+| 0 | a cada 6h | `discover` + `scope-monitor` (barato) |
+| 1 | diário | `subfinder` + `httpx` nos top-N |
+| 2 | a cada 2–3 dias | `nuclei` nos top-N (fila serializada) |
+
+```bash
+make tier1                 # roda o Tier 1 manual (valide antes de armar os timers)
+make tier2                 # roda o Tier 2 manual
+BBLAB_USER=bbhunter make install-timers   # instala os 3 timers (usuário não-root)
+make loop-status           # status dos timers + próxima execução
+```
+
+Rode `make tier1`/`make tier2` manual e observe 48h com poucos programas antes de escalar pro
+top-15. Toda sonda do loop passa pelo scope-guard antes de tocar no alvo — sem exceção.
+
 ## Rastreio de achados + report
 
 ```bash
@@ -112,5 +164,5 @@ Abra `claude` na raiz e use os slash-commands: `/kickoff <handle>`, `/monitor <h
 
 ## Segurança operacional
 
-- `.env`, `targets/`, `loot/` e `configs/*.conf` são **git-ignored**. Nunca commite escopo de programa privado, token ou achado.
+- `.env`, `targets/`, `loot/`, `state/` e `configs/*.conf` são **git-ignored**. Nunca commite escopo de programa privado, token, achado, ou o IP/host da VPS.
 - Antes de rodar `install_tools.sh` de qualquer repo vendored, revise o conteúdo. Você não quer ser o vetor.

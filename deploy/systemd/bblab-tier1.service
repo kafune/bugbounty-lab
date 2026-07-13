@@ -1,0 +1,14 @@
+[Unit]
+Description=bugbounty-lab Tier 1 (subfinder + httpx nos top-N)
+Documentation=file://__BBLAB_ROOT__/README.md
+After=network-online.target
+Wants=network-online.target
+OnFailure=bblab-notify-failure@%n.service
+
+[Service]
+Type=oneshot
+User=__BBLAB_USER__
+WorkingDirectory=__BBLAB_ROOT__
+ExecStart=/usr/bin/env bash __BBLAB_ROOT__/bin/run-tier.sh 1
+Nice=10
+IOSchedulingClass=idle

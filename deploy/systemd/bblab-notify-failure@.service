@@ -1,0 +1,8 @@
+[Unit]
+Description=bugbounty-lab: notifica falha da unit %i
+
+[Service]
+Type=oneshot
+User=__BBLAB_USER__
+WorkingDirectory=__BBLAB_ROOT__
+ExecStart=/usr/bin/env bash -c '__BBLAB_ROOT__/bin/notify.sh "[bugbounty-lab] FALHA na unit %i — cheque: journalctl -u %i"'
