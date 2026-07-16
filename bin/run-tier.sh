@@ -34,6 +34,12 @@ TIER="${1:-}"
 NUCLEI_CONCURRENCY="${NUCLEI_CONCURRENCY:-25}"
 NUCLEI_RATE_LIMIT="${NUCLEI_RATE_LIMIT:-100}"
 
+# teto de wall-clock por host (rede de segurança: nenhum alvo lento eterniza o
+# ciclo). recon.sh já se auto-limita por etapa; isto é o backstop de fora.
+TIER1_MAX_PER_HOST="${TIER1_MAX_PER_HOST:-1200}"   # 20 min por host no Tier 1 (headroom p/ alvos grandes)
+TIER2_MAX_PER_HOST="${TIER2_MAX_PER_HOST:-1800}"   # 30 min por host no Tier 2
+timed() { if have timeout; then timeout "$@"; else shift; "$@"; fi; }
+
 # handles tier_eligible ordenados por score efetivo (Fase D)
 eligible_handles() { PY "$ROOT/bin/state.py" rank --eligible; }
 
@@ -65,9 +71,11 @@ tier1_one() {
   log "tier1: $h"
   # monitor roda recon (sem katana/nuclei) + diff de superfície + notify.
   local out delta
-  out="$(RECON_NO_KATANA=1 RECON_NO_NUCLEI=1 bash "$ROOT/bin/monitor.sh" "$h" 2>&1 || true)"
+  out="$(RECON_NO_KATANA=1 RECON_NO_NUCLEI=1 timed "$TIER1_MAX_PER_HOST" bash "$ROOT/bin/monitor.sh" "$h" 2>&1 </dev/null || true)"
   printf '%s\n' "$out" | strip_ansi | sed 's/^/    /'
-  delta="$(printf '%s' "$out" | strip_ansi | grep -oE '[0-9]+ novidades' | grep -oE '[0-9]+' | head -1)"
+  # `|| true` é obrigatório: sob set -e + pipefail, um grep sem match (host sem
+  # novidades, ou timeout) faria a atribuição falhar e ABORTAR o tier inteiro.
+  delta="$(printf '%s' "$out" | strip_ansi | grep -oE '[0-9]+ novidades' | grep -oE '[0-9]+' | head -1 || true)"
   delta="${delta:-0}"
 
   if [ "$delta" -gt 0 ]; then
@@ -82,7 +90,12 @@ tier1_one() {
 run_tier1() {
   local handles; handles="$(eligible_handles)"
   [ -z "$handles" ] && { log "tier1: nenhum handle tier_eligible (rode discover)"; return; }
-  while read -r h; do [ -n "$h" ] && tier1_one "$h"; done <<< "$handles"
+  # loop lê do fd 3 (não do stdin): ferramentas internas como httpx/nuclei
+  # DRENAM o stdin herdado, o que comeria o here-string e mataria o loop após
+  # o 1º host. guarda `|| log`: falha/timeout de um host não aborta o tier.
+  while read -r h <&3; do
+    [ -n "$h" ] && { tier1_one "$h" || log "[warn] tier1 $h falhou — segue"; }
+  done 3<<< "$handles"
 }
 
 # ---------------------------------------------------------------------------
@@ -116,9 +129,9 @@ tier2_one() {
   if ! have nuclei; then skip nuclei; return; fi
   log "tier2: $h — nuclei em $n alvo(s) (c=$NUCLEI_CONCURRENCY rl=$NUCLEI_RATE_LIMIT)"
   local bdir="$ldir/.baseline"; mkdir -p "$bdir"
-  nuclei -l "$safe" -severity info,low,medium,high,critical \
+  timed "$TIER2_MAX_PER_HOST" nuclei -l "$safe" -severity info,low,medium,high,critical \
     -c "$NUCLEI_CONCURRENCY" -rate-limit "$NUCLEI_RATE_LIMIT" \
-    -o "$ldir/nuclei.txt" -silent 2>/dev/null || true
+    -o "$ldir/nuclei.txt" -silent 2>/dev/null </dev/null || true
 
   local new_out; new_out="$ldir/new-nuclei-$(basename "$safe").txt"
   diff_new "$ldir/nuclei.txt" "$bdir/nuclei.txt" > "$new_out" 2>/dev/null || true
@@ -144,8 +157,11 @@ run_tier2() {
   fi
   local handles; handles="$(eligible_handles)"
   [ -z "$handles" ] && { log "tier2: nenhum handle tier_eligible (rode discover)"; return; }
-  # serializado: um handle (um nuclei) por vez
-  while read -r h; do [ -n "$h" ] && tier2_one "$h"; done <<< "$handles"
+  # serializado: um handle (um nuclei) por vez; falha de um não aborta o tier.
+  # fd 3 pelo mesmo motivo do tier1: nuclei drena o stdin herdado.
+  while read -r h <&3; do
+    [ -n "$h" ] && { tier2_one "$h" || log "[warn] tier2 $h falhou — segue"; }
+  done 3<<< "$handles"
 }
 
 case "$TIER" in

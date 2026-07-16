@@ -33,6 +33,21 @@ OOS="$TDIR/out-of-scope.txt"
 [ -f "$SCOPE" ] || { echo "sem scope.txt em $TDIR — rode h1sync.py antes"; exit 1; }
 mkdir -p "$LDIR"
 
+# --- tunables de performance (ajustáveis por .env) --------------------------
+# Todos os loops raiz-por-raiz rodam em paralelo (RECON_PARALLEL) e toda sonda
+# tem TETO de tempo — nenhum alvo lento pode mais comer horas. Scope-guard
+# permanece intacto: cada host achado ainda passa por in_scope_filter.
+RECON_PARALLEL="${RECON_PARALLEL:-8}"        # raízes processadas em paralelo (crt.sh/dig)
+SUBFINDER_TIMEOUT="${SUBFINDER_TIMEOUT:-15}" # seg antes de timeout por fonte
+SUBFINDER_MAXTIME="${SUBFINDER_MAXTIME:-3}"  # min máx. de enumeração (global)
+CRTSH_MAXTIME="${CRTSH_MAXTIME:-15}"         # seg máx. por curl à crt.sh
+DIG_TIMEOUT="${DIG_TIMEOUT:-2}"              # seg por query dig (+time)
+DIG_TRIES="${DIG_TRIES:-1}"                  # tentativas por query dig (+tries)
+HTTPX_TIMEOUT="${HTTPX_TIMEOUT:-8}"          # seg por probe httpx
+HTTPX_THREADS="${HTTPX_THREADS:-50}"         # threads httpx
+HTTPX_MAXTIME="${HTTPX_MAXTIME:-300}"        # seg máx. global do httpx (teto duro)
+GAU_MAXTIME="${GAU_MAXTIME:-120}"            # seg máx. total do gau
+
 # --- normaliza escopo (via lib) ---------------------------------------------
 # wildcards (*.dominio) viram dominio raiz para enum; url/host vão direto.
 scope_roots "$SCOPE" > "$LDIR/roots.txt"
@@ -49,8 +64,13 @@ log "raízes in-scope: $(wc -l < "$LDIR/roots.txt")"
 
 # 1a. subfinder (passivo)
 if have subfinder; then
-  log "subfinder..."
-  subfinder -dL "$LDIR/roots.txt" -silent 2>/dev/null \
+  # ATENÇÃO: subfinder v2.14 aplica -max-time POR DOMÍNIO quando usa -dL, então
+  # não limita o tempo global. O `timeout` externo é o freio real; subfinder
+  # streamma achados conforme encontra, então cortar preserva o que já veio.
+  sf_secs=$(( SUBFINDER_MAXTIME * 60 ))
+  log "subfinder (hard-cap=${sf_secs}s, timeout/fonte=${SUBFINDER_TIMEOUT}s)..."
+  timeout "$sf_secs" subfinder -dL "$LDIR/roots.txt" -silent \
+    -timeout "$SUBFINDER_TIMEOUT" -max-time "$SUBFINDER_MAXTIME" 2>/dev/null \
     | in_scope_filter >> "$LDIR/subs.raw" || true
 else
   skip subfinder
@@ -58,17 +78,21 @@ fi
 
 # 1b. crt.sh — certificate transparency (passivo, sem instalar nada)
 if have curl; then
-  log "crt.sh (cert transparency)..."
-  while read -r root; do
-    [ -z "$root" ] && continue
-    body="$(curl -fsS --max-time 25 "https://crt.sh/?q=%25.${root}&output=json" 2>/dev/null || true)"
-    [ -z "$body" ] && continue
-    if have jq; then
-      printf '%s' "$body" | jq -r '.[].name_value' 2>/dev/null
-    else
-      printf '%s' "$body" | grep -oE '"name_value":"[^"]*"' | cut -d'"' -f4
-    fi
-  done < "$LDIR/roots.txt" \
+  log "crt.sh (cert transparency, -P${RECON_PARALLEL} max-time=${CRTSH_MAXTIME}s)..."
+  export CRTSH_MAXTIME
+  # cada raiz é consultada em paralelo (xargs -P); a saída bruta de todas as
+  # raízes é depois normalizada e re-filtrada por escopo antes do pool.
+  grep -v '^[[:space:]]*$' "$LDIR/roots.txt" \
+    | xargs -r -P "$RECON_PARALLEL" -I{} bash -c '
+        root="$1"
+        body="$(curl -fsS --max-time "${CRTSH_MAXTIME:-15}" "https://crt.sh/?q=%25.${root}&output=json" 2>/dev/null || true)"
+        [ -z "$body" ] && exit 0
+        if command -v jq >/dev/null 2>&1; then
+          printf "%s" "$body" | jq -r ".[].name_value" 2>/dev/null
+        else
+          printf "%s" "$body" | grep -oE "\"name_value\":\"[^\"]*\"" | cut -d"\"" -f4
+        fi
+      ' _ {} \
     | sed 's/\\n/\n/g; s/^\*\.//; s/^ *//; s/ *$//' \
     | in_scope_filter >> "$LDIR/subs.raw" || true
 else
@@ -79,31 +103,37 @@ fi
 #     Só toca infra que serve o domínio in-scope; qualquer host achado é
 #     re-filtrado por escopo antes de entrar no pool.
 if have dig; then
-  log "DNS records + AXFR (zone transfer)..."
-  mkdir -p "$LDIR/dns"
-  : > "$LDIR/dns/records.txt"
-  : > "$LDIR/dns/axfr.txt"
-  while read -r root; do
-    [ -z "$root" ] && continue
-    {
-      echo "### $root";
-      echo "# NS";  dig +short NS  "$root";
-      echo "# SOA"; dig +short SOA "$root";
-      echo "# MX";  dig +short MX  "$root";
-      echo "# TXT"; dig +short TXT "$root";
-      echo;
-    } >> "$LDIR/dns/records.txt" 2>/dev/null || true
-    # tenta AXFR em cada NS
-    for ns in $(dig +short NS "$root" 2>/dev/null); do
-      out="$(dig +noall +answer AXFR "$root" "@${ns%.}" 2>/dev/null || true)"
-      if [ -n "$out" ]; then
-        echo "### AXFR OK: $root @ $ns" >> "$LDIR/dns/axfr.txt"
-        printf '%s\n' "$out" >> "$LDIR/dns/axfr.txt"
-        # hostnames do dump entram no pool (re-filtrados)
-        printf '%s\n' "$out" | awk '{print $1}' | sed 's/\.$//'
-      fi
-    done
-  done < "$LDIR/roots.txt" | in_scope_filter >> "$LDIR/subs.raw" || true
+  log "DNS records + AXFR (zone transfer, -P${RECON_PARALLEL} +time=${DIG_TIMEOUT} +tries=${DIG_TRIES})..."
+  mkdir -p "$LDIR/dns" "$LDIR/dns/.parts"
+  rm -f "$LDIR/dns/.parts/"* 2>/dev/null || true
+  export DIG_TIMEOUT DIG_TRIES LDIR
+  # cada raiz roda em paralelo; grava seus records/axfr em arquivo próprio
+  # (sem race de append) e imprime hostnames do AXFR em stdout para o pool.
+  DG="+time=$DIG_TIMEOUT +tries=$DIG_TRIES"
+  export DG
+  grep -v '^[[:space:]]*$' "$LDIR/roots.txt" \
+    | xargs -r -P "$RECON_PARALLEL" -I{} bash -c '
+        root="$1"; parts="$LDIR/dns/.parts"
+        {
+          echo "### $root";
+          echo "# NS";  dig $DG +short NS  "$root";
+          echo "# SOA"; dig $DG +short SOA "$root";
+          echo "# MX";  dig $DG +short MX  "$root";
+          echo "# TXT"; dig $DG +short TXT "$root";
+          echo;
+        } > "$parts/rec-$root.txt" 2>/dev/null || true
+        for ns in $(dig $DG +short NS "$root" 2>/dev/null); do
+          out="$(dig $DG +noall +answer AXFR "$root" "@${ns%.}" 2>/dev/null || true)"
+          [ -z "$out" ] && continue
+          { echo "### AXFR OK: $root @ $ns"; printf "%s\n" "$out"; } >> "$parts/axfr-$root.txt"
+          printf "%s\n" "$out" | awk "{print \$1}" | sed "s/\.\$//"
+        done
+      ' _ {} \
+    | in_scope_filter >> "$LDIR/subs.raw" || true
+  # consolida as partes (ordem estável) nos arquivos finais
+  cat "$LDIR/dns/.parts/"rec-*.txt  > "$LDIR/dns/records.txt" 2>/dev/null || : > "$LDIR/dns/records.txt"
+  cat "$LDIR/dns/.parts/"axfr-*.txt > "$LDIR/dns/axfr.txt"    2>/dev/null || : > "$LDIR/dns/axfr.txt"
+  rm -rf "$LDIR/dns/.parts" 2>/dev/null || true
   [ -s "$LDIR/dns/axfr.txt" ] && log "AXFR: zone transfer aberto! ver loot/$PROG/dns/axfr.txt"
 else
   skip dig
@@ -116,8 +146,9 @@ log "subs (multi-fonte): $(wc -l < "$LDIR/subs.txt")"
 
 # --- 2. hosts vivos ---------------------------------------------------------
 if have httpx; then
-  log "httpx (probe + tech)..."
-  httpx -l "$LDIR/subs.txt" -silent -td -sc -title 2>/dev/null > "$LDIR/live.txt"
+  log "httpx (probe + tech, timeout=${HTTPX_TIMEOUT}s t=${HTTPX_THREADS} cap=${HTTPX_MAXTIME}s)..."
+  timeout "$HTTPX_MAXTIME" httpx -l "$LDIR/subs.txt" -silent -td -sc -title \
+    -timeout "$HTTPX_TIMEOUT" -t "$HTTPX_THREADS" 2>/dev/null > "$LDIR/live.txt" || true
   awk '{print $1}' "$LDIR/live.txt" | sort -u > "$LDIR/live-urls.txt"
   log "vivos: $(wc -l < "$LDIR/live-urls.txt")"
 else
@@ -141,11 +172,11 @@ fi
 
 # URLs históricas — endpoints removidos/esquecidos (passivo)
 if have gau; then
-  log "gau (wayback/otx histórico)..."
-  gau --threads 5 < "$LDIR/roots.txt" 2>/dev/null | in_scope_filter >> "$LDIR/urls.raw" || true
+  log "gau (wayback/otx histórico, teto=${GAU_MAXTIME}s)..."
+  timeout "$GAU_MAXTIME" gau --threads 5 < "$LDIR/roots.txt" 2>/dev/null | in_scope_filter >> "$LDIR/urls.raw" || true
 elif have waybackurls; then
-  log "waybackurls (histórico)..."
-  waybackurls < "$LDIR/roots.txt" 2>/dev/null | in_scope_filter >> "$LDIR/urls.raw" || true
+  log "waybackurls (histórico, teto=${GAU_MAXTIME}s)..."
+  timeout "$GAU_MAXTIME" waybackurls < "$LDIR/roots.txt" 2>/dev/null | in_scope_filter >> "$LDIR/urls.raw" || true
 else
   skip "gau/waybackurls"
 fi
