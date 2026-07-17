@@ -86,7 +86,11 @@ python3 $K/postman-auth.py <collection.json> --mint     # Fase 2: minta token de
 bash $K/firebase-storage.sh <bucket.appspot.com> list   # Fase 6: bucket Firebase
 ```
 
-O `recon.sh` roda `subfinder → httpx → katana → nuclei`, cada passo **opcional** (tool ausente é pulada, não quebra). Tudo filtrado contra `scope.txt` / `out-of-scope.txt`. Resultado em `loot/<handle>/`.
+O `recon.sh` roda `subfinder → httpx → katana → nuclei`; no uso manual, cada passo e
+opcional. Nos tiers automatizados, `subfinder`+`httpx` (Tier 1) e `nuclei` (Tier 2) sao
+obrigatorios: tool ausente ou timeout do runner falha a unit em vez de produzir cobertura
+parcial silenciosa. Tudo e filtrado contra `scope.txt` / `out-of-scope.txt`. Resultado em
+`loot/<handle>/`.
 
 Para o "porquê/quando" de cada fase e a tabela de roteamento pras `hunt-*` da fundação, veja `skills/custom/h1-program-kickoff/SKILL.md`.
 
@@ -133,7 +137,7 @@ Três tiers por cadência/custo, com contenção pra VPS de 4 vCPU (`flock` por 
 |------|----------|----------|
 | 0 | a cada 6h | `discover` + `scope-monitor` (barato) |
 | 1 | diário | `subfinder` + `httpx` nos top-N |
-| 2 | a cada 2–3 dias | `nuclei` nos top-N (fila serializada) |
+| 2 | a cada 2–3 dias | `nuclei` nos top-N (fila serializada, batches atômicos) |
 
 ```bash
 make tier1                 # roda o Tier 1 manual (valide antes de armar os timers)
@@ -144,6 +148,18 @@ make loop-status           # status dos timers + próxima execução
 
 Rode `make tier1`/`make tier2` manual e observe 48h com poucos programas antes de escalar pro
 top-15. Toda sonda do loop passa pelo scope-guard antes de tocar no alvo — sem exceção.
+O runner inclui automaticamente `~/go/bin` e `~/.local/bin` no `PATH`; use
+`BBLAB_TOOL_PATH=/opt/tools/bin:/outro/bin` no `.env` para caminhos adicionais.
+O Tier 2 usa seleção automática de templates por tecnologia, reporta `medium,high,critical`
+por padrão (info/low são ruído raro de virar report) e roda em lotes de 25 alvos. Timeout de um
+lote preserva os achados parciais já gravados — não descarta a run. Ajuste `NUCLEI_AUTOMATIC_SCAN`,
+`NUCLEI_SEVERITY`, `NUCLEI_BATCH_SIZE` e `TIER2_MAX_PER_BATCH` no `.env` quando necessário.
+
+O scope guard diferencia host exato de wildcard. `api.exemplo.com` nao autoriza
+`dev.api.exemplo.com`, `*.exemplo.com` nao autoriza a raiz, e uma URL limitada a caminho so
+aceita URLs dentro daquele caminho.
+Quando houver inclusoes/exclusoes por caminho, passe a URL completa ao `scope-check`; uma
+checagem somente do hostname nao consegue validar qual path sera acessado.
 
 ## Rastreio de achados + report
 

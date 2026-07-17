@@ -28,12 +28,16 @@ CLI (pra ser chamado do bash):
   state.py rank [--eligible]              imprime handles por score efetivo
 """
 import json
+import os
 import sys
+import tempfile
+from contextlib import contextmanager
 from datetime import datetime, timezone
+from fcntl import LOCK_EX, LOCK_UN, flock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-STATE = ROOT / "state"
+STATE = Path(os.getenv("BBLAB_STATE_DIR", ROOT / "state"))
 
 # --- constantes de feedback (ajustáveis) ------------------------------------
 DELTA_BOOST_BASE = 0.4       # por run com delta
@@ -57,6 +61,18 @@ def path(handle):
     return STATE / f"{handle}.json"
 
 
+@contextmanager
+def locked(handle):
+    locks = STATE / "locks"
+    locks.mkdir(parents=True, exist_ok=True)
+    with (locks / f"{handle}.state.lock").open("a+") as lock:
+        flock(lock.fileno(), LOCK_EX)
+        try:
+            yield
+        finally:
+            flock(lock.fileno(), LOCK_UN)
+
+
 def load(handle):
     p = path(handle)
     base = {
@@ -75,7 +91,20 @@ def load(handle):
 def save(handle, st):
     STATE.mkdir(parents=True, exist_ok=True)
     st["boost"] = round(_clamp(st.get("boost", 0.0), BOOST_MIN, BOOST_MAX), 4)
-    path(handle).write_text(json.dumps(st, indent=2), encoding="utf-8")
+    target = path(handle)
+    fd, temporary = tempfile.mkstemp(prefix=f".{handle}.", suffix=".tmp", dir=STATE)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as output:
+            json.dump(st, output, indent=2)
+            output.write("\n")
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, target)
+    finally:
+        try:
+            Path(temporary).unlink()
+        except FileNotFoundError:
+            pass
     return st
 
 
@@ -88,36 +117,40 @@ def effective_score(handle, base_score):
 
 
 def record_delta(handle, count):
-    st = load(handle)
-    gain = min(DELTA_BOOST_BASE + DELTA_BOOST_PER_ITEM * max(0, count),
-               DELTA_BOOST_CAP)
-    st["boost"] = st.get("boost", 0.0) + gain
-    st["consecutive_empty_runs"] = 0
-    st["last_delta_at"] = _now()
-    return save(handle, st)
+    with locked(handle):
+        st = load(handle)
+        gain = min(DELTA_BOOST_BASE + DELTA_BOOST_PER_ITEM * max(0, count),
+                   DELTA_BOOST_CAP)
+        st["boost"] = st.get("boost", 0.0) + gain
+        st["consecutive_empty_runs"] = 0
+        st["last_delta_at"] = _now()
+        return save(handle, st)
 
 
 def record_empty(handle):
-    st = load(handle)
-    st["consecutive_empty_runs"] = st.get("consecutive_empty_runs", 0) + 1
-    if st["consecutive_empty_runs"] > EMPTY_THRESHOLD:
-        st["boost"] = st.get("boost", 0.0) - EMPTY_PENALTY
-    return save(handle, st)
+    with locked(handle):
+        st = load(handle)
+        st["consecutive_empty_runs"] = st.get("consecutive_empty_runs", 0) + 1
+        if st["consecutive_empty_runs"] > EMPTY_THRESHOLD:
+            st["boost"] = st.get("boost", 0.0) - EMPTY_PENALTY
+        return save(handle, st)
 
 
 def record_finding(handle):
-    st = load(handle)
-    st["boost"] = st.get("boost", 0.0) + FINDING_BOOST
-    st["consecutive_empty_runs"] = 0
-    return save(handle, st)
+    with locked(handle):
+        st = load(handle)
+        st["boost"] = st.get("boost", 0.0) + FINDING_BOOST
+        st["consecutive_empty_runs"] = 0
+        return save(handle, st)
 
 
 def mark_tier_run(handle, tier):
-    st = load(handle)
-    key = "last_tier1_run" if str(tier) == "1" else "last_tier2_run"
-    st[key] = _now()
-    st["tier"] = int(tier)
-    return save(handle, st)
+    with locked(handle):
+        st = load(handle)
+        key = "last_tier1_run" if str(tier) == "1" else "last_tier2_run"
+        st[key] = _now()
+        st["tier"] = int(tier)
+        return save(handle, st)
 
 
 def _load_catalog():

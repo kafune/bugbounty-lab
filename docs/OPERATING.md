@@ -3,6 +3,12 @@
 O "porquê/quando" por trás dos comandos. Para o passo-a-passo de um programa novo, veja
 `skills/custom/h1-program-kickoff/SKILL.md`; para o mapa de fases, `playbook/00-como-usar.md`.
 
+O Tier 2 automatizado executa Nuclei em lotes, usa detecção de tecnologia para selecionar
+templates e por padrão só reporta `medium,high,critical` (info/low são ruído raro de virar
+report). Se um lote estoura o timeout, os achados parciais já gravados são preservados — a
+próxima run re-escaneia os alvos e o baseline diff pega o que faltou; só um erro real do Nuclei
+descarta o resultado. Tamanho de lote, timeout e severidades são configuráveis no `.env`.
+
 ## O ciclo fechado
 
 ```
@@ -22,7 +28,7 @@ Cada seta é um comando/skill do lab. O agente (Claude Code) dirige, sempre resp
 | Programa novo, tenho o handle | `/kickoff <handle>` (sync + recon + skill) |
 | Programa novo, colaram o escopo | invoque `h1-program-kickoff` com o texto |
 | Já tenho baseline, quero saber o que mudou | `/monitor <handle>` — deltas de superfície |
-| Vou tocar num host manualmente | `bash bin/scope-check.sh <host> <handle>` ANTES |
+| Vou tocar num host/URL manualmente | `bash bin/scope-check.sh <host-ou-url> <handle>` ANTES |
 | Achei algo | `bin/findings.py new <handle> <slug>` e preencha |
 | Quero ver meu funil | `/status` |
 | Confirmei e passei no 7-Q Gate | `bin/h1report.py findings/<h>/<slug>.md` (dry-run → `--submit`) |
@@ -41,6 +47,8 @@ Todo caminho até um alvo passa pela mesma lib: `bin/_scope.sh`. `recon.sh`, `mo
 `scope-check.sh` dão `source` nela — uma fonte única, sem divergência. Wildcard autoriza
 subdomínio da raiz; out-of-scope sempre subtrai. Se um host não passa no `host_in_scope`, não
 existe pro lab.
+Para ativos ou exclusoes limitados a caminho, valide a URL completa; validar apenas o hostname
+nao comprova que o path pretendido esta autorizado.
 
 ## Honestidade de achado
 

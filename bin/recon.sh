@@ -5,7 +5,8 @@
 #
 # Filosofia: NUNCA sai do escopo. Wildcards viram raiz de enum; qualquer
 # host que caia em out-of-scope.txt é descartado antes de qualquer sonda.
-# Cada tool é opcional — se não estiver instalada, o passo é pulado, não quebra.
+# No uso manual, tools ausentes sao puladas. Os tiers automatizados fazem
+# preflight das ferramentas obrigatorias antes de chamar este script.
 #
 # Fontes de subdomínio (união, tudo passa por in_scope_filter):
 #   subfinder (passivo) + crt.sh (cert transparency) + AXFR (zone transfer).
@@ -22,6 +23,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/bin/_scope.sh"   # scope-guard compartilhado: have/log/skip + filtros
+bootstrap_tool_path
 PROG="${1:-}"
 [ -z "$PROG" ] && { echo "uso: $0 <programa>"; exit 1; }
 
@@ -47,29 +49,39 @@ HTTPX_TIMEOUT="${HTTPX_TIMEOUT:-8}"          # seg por probe httpx
 HTTPX_THREADS="${HTTPX_THREADS:-50}"         # threads httpx
 HTTPX_MAXTIME="${HTTPX_MAXTIME:-300}"        # seg máx. global do httpx (teto duro)
 GAU_MAXTIME="${GAU_MAXTIME:-120}"            # seg máx. total do gau
+# Mesmo default do loop Tier 2: info/low quase nunca viram report. Sobrescreva
+# por .env (NUCLEI_SEVERITY) se quiser varredura mais ampla no recon manual.
+NUCLEI_SEVERITY="${NUCLEI_SEVERITY:-medium,high,critical}"
+NUCLEI_MAXTIME="${NUCLEI_MAXTIME:-1800}"     # seg máx. global do nuclei (teto duro)
 
 # --- normaliza escopo (via lib) ---------------------------------------------
 # wildcards (*.dominio) viram dominio raiz para enum; url/host vão direto.
-scope_roots "$SCOPE" > "$LDIR/roots.txt"
-OOS_RE="$(scope_oos_regex "$OOS")"
+scope_roots "$SCOPE" "$OOS" > "$LDIR/roots.txt"
+scope_enum_roots "$SCOPE" "$OOS" > "$LDIR/enum-roots.txt"
 
-# mantém só o que casa uma raiz in-scope e NÃO casa out-of-scope
-in_scope_filter() { scope_filter "$LDIR/roots.txt" "$OOS_RE"; }
+# Mantem apenas entradas cobertas literalmente pelo escopo. Host exato nao
+# autoriza subdominios; wildcard nao autoriza a propria raiz.
+in_scope_filter() { scope_filter "$SCOPE" "$OOS"; }
 
 log "programa: $PROG"
 log "raízes in-scope: $(wc -l < "$LDIR/roots.txt")"
+log "raízes enumeráveis (wildcard): $(wc -l < "$LDIR/enum-roots.txt")"
 
 # --- 1. subdomínios (multi-fonte, todos scope-filtered) ---------------------
 : > "$LDIR/subs.raw"
+# Hosts/URLs exatos entram como sementes. Wildcards dependem de descoberta.
+scope_seeds "$SCOPE" | in_scope_filter >> "$LDIR/subs.raw"
 
 # 1a. subfinder (passivo)
-if have subfinder; then
+if [ ! -s "$LDIR/enum-roots.txt" ]; then
+  log "subfinder: sem wildcard para enumerar"
+elif have subfinder; then
   # ATENÇÃO: subfinder v2.14 aplica -max-time POR DOMÍNIO quando usa -dL, então
   # não limita o tempo global. O `timeout` externo é o freio real; subfinder
   # streamma achados conforme encontra, então cortar preserva o que já veio.
   sf_secs=$(( SUBFINDER_MAXTIME * 60 ))
   log "subfinder (hard-cap=${sf_secs}s, timeout/fonte=${SUBFINDER_TIMEOUT}s)..."
-  timeout "$sf_secs" subfinder -dL "$LDIR/roots.txt" -silent \
+  timeout "$sf_secs" subfinder -dL "$LDIR/enum-roots.txt" -silent \
     -timeout "$SUBFINDER_TIMEOUT" -max-time "$SUBFINDER_MAXTIME" 2>/dev/null \
     | in_scope_filter >> "$LDIR/subs.raw" || true
 else
@@ -77,12 +89,14 @@ else
 fi
 
 # 1b. crt.sh — certificate transparency (passivo, sem instalar nada)
-if have curl; then
+if [ ! -s "$LDIR/enum-roots.txt" ]; then
+  log "crt.sh: sem wildcard para enumerar"
+elif have curl; then
   log "crt.sh (cert transparency, -P${RECON_PARALLEL} max-time=${CRTSH_MAXTIME}s)..."
   export CRTSH_MAXTIME
   # cada raiz é consultada em paralelo (xargs -P); a saída bruta de todas as
   # raízes é depois normalizada e re-filtrada por escopo antes do pool.
-  grep -v '^[[:space:]]*$' "$LDIR/roots.txt" \
+  grep -v '^[[:space:]]*$' "$LDIR/enum-roots.txt" \
     | xargs -r -P "$RECON_PARALLEL" -I{} bash -c '
         root="$1"
         body="$(curl -fsS --max-time "${CRTSH_MAXTIME:-15}" "https://crt.sh/?q=%25.${root}&output=json" 2>/dev/null || true)"
@@ -111,6 +125,7 @@ if have dig; then
   # (sem race de append) e imprime hostnames do AXFR em stdout para o pool.
   DG="+time=$DIG_TIMEOUT +tries=$DIG_TRIES"
   export DG
+  export -f axfr_has_soa
   grep -v '^[[:space:]]*$' "$LDIR/roots.txt" \
     | xargs -r -P "$RECON_PARALLEL" -I{} bash -c '
         root="$1"; parts="$LDIR/dns/.parts"
@@ -122,12 +137,15 @@ if have dig; then
           echo "# TXT"; dig $DG +short TXT "$root";
           echo;
         } > "$parts/rec-$root.txt" 2>/dev/null || true
-        for ns in $(dig $DG +short NS "$root" 2>/dev/null); do
-          out="$(dig $DG +noall +answer AXFR "$root" "@${ns%.}" 2>/dev/null || true)"
-          [ -z "$out" ] && continue
+        while read -r ns; do
+          [ -n "$ns" ] || continue
+          if ! out="$(dig $DG +noall +answer AXFR "$root" "@${ns%.}" 2>/dev/null)"; then
+            continue
+          fi
+          printf "%s\n" "$out" | axfr_has_soa || continue
           { echo "### AXFR OK: $root @ $ns"; printf "%s\n" "$out"; } >> "$parts/axfr-$root.txt"
           printf "%s\n" "$out" | awk "{print \$1}" | sed "s/\.\$//"
-        done
+        done < <(dig $DG +noall +answer NS "$root" 2>/dev/null | awk "\$4 == \"NS\" {print \$5}")
       ' _ {} \
     | in_scope_filter >> "$LDIR/subs.raw" || true
   # consolida as partes (ordem estável) nos arquivos finais
@@ -141,19 +159,30 @@ fi
 
 # consolida subdomínios
 sort -u "$LDIR/subs.raw" > "$LDIR/subs.txt"
-[ -s "$LDIR/subs.txt" ] || cp "$LDIR/roots.txt" "$LDIR/subs.txt"
 log "subs (multi-fonte): $(wc -l < "$LDIR/subs.txt")"
 
 # --- 2. hosts vivos ---------------------------------------------------------
 if have httpx; then
   log "httpx (probe + tech, timeout=${HTTPX_TIMEOUT}s t=${HTTPX_THREADS} cap=${HTTPX_MAXTIME}s)..."
+  httpx_tmp="$LDIR/live.current.txt"
+  rm -f "$httpx_tmp"
+  httpx_rc=0
   timeout "$HTTPX_MAXTIME" httpx -l "$LDIR/subs.txt" -silent -td -sc -title \
-    -timeout "$HTTPX_TIMEOUT" -t "$HTTPX_THREADS" 2>/dev/null > "$LDIR/live.txt" || true
+    -timeout "$HTTPX_TIMEOUT" -t "$HTTPX_THREADS" > "$httpx_tmp" || httpx_rc=$?
+  if [ "$httpx_rc" -ne 0 ] && [ "$httpx_rc" -ne 124 ]; then
+    rm -f "$httpx_tmp"
+    error "httpx falhou (exit=$httpx_rc); resultado anterior preservado"
+    exit "$httpx_rc"
+  fi
+  [ "$httpx_rc" -eq 124 ] && log "[warn] httpx atingiu o teto; usando resultados parciais"
+  mv "$httpx_tmp" "$LDIR/live.txt"
   awk '{print $1}' "$LDIR/live.txt" | sort -u > "$LDIR/live-urls.txt"
   log "vivos: $(wc -l < "$LDIR/live-urls.txt")"
 else
   skip httpx
-  sed 's#^#https://#' "$LDIR/subs.txt" > "$LDIR/live-urls.txt"
+  # Nao fabricar liveness: sem probe, nenhum alvo pode ser declarado vivo.
+  : > "$LDIR/live.txt"
+  : > "$LDIR/live-urls.txt"
 fi
 
 # --- 3. endpoints: crawl (katana) + histórico (gau/waybackurls) -------------
@@ -186,15 +215,34 @@ if [ -s "$LDIR/urls.raw" ]; then
   log "urls (crawl+histórico): $(wc -l < "$LDIR/urls.txt")"
 fi
 
-# --- 4. nuclei (baixa severidade primeiro, sem barulho) ---------------------
+# --- 4. nuclei (só o que costuma virar report) ------------------------------
 # RECON_NO_NUCLEI=1 pula o nuclei (Tier 1 não roda scan pesado; fica no Tier 2,
 # serializado). Backward-compat: sem a env, comportamento é o de sempre.
 if [ "${RECON_NO_NUCLEI:-}" = 1 ]; then
   skip "nuclei (RECON_NO_NUCLEI=1)"
 elif have nuclei; then
-  log "nuclei (info,low,medium)..."
-  nuclei -l "$LDIR/live-urls.txt" -severity info,low,medium \
-    -o "$LDIR/nuclei.txt" -silent 2>/dev/null || true
+  if [ ! -s "$LDIR/live-urls.txt" ]; then
+    log "nuclei: sem alvos vivos"
+    : > "$LDIR/nuclei.txt"
+  else
+    log "nuclei (sev=$NUCLEI_SEVERITY, cap=${NUCLEI_MAXTIME}s)..."
+    nuclei_tmp="$LDIR/nuclei.current.txt"
+    rm -f "$nuclei_tmp"
+    : > "$nuclei_tmp"
+    # Mesmo idioma do httpx acima: nuclei grava cada achado no -o na hora, entao
+    # o teto (124) preserva o parcial; so erro real descarta e falha.
+    nuclei_rc=0
+    timeout "$NUCLEI_MAXTIME" nuclei -l "$LDIR/live-urls.txt" -severity "$NUCLEI_SEVERITY" \
+        -o "$nuclei_tmp" -silent >/dev/null || nuclei_rc=$?
+    if [ "$nuclei_rc" -ne 0 ] && [ "$nuclei_rc" -ne 124 ]; then
+      rm -f "$nuclei_tmp"
+      error "nuclei falhou (exit=$nuclei_rc); resultado anterior preservado"
+      exit "$nuclei_rc"
+    fi
+    [ "$nuclei_rc" -eq 124 ] && log "[warn] nuclei atingiu o teto (${NUCLEI_MAXTIME}s); usando achados parciais"
+    sort -u "$nuclei_tmp" -o "$nuclei_tmp"
+    mv "$nuclei_tmp" "$LDIR/nuclei.txt"
+  fi
   log "achados nuclei: $(wc -l < "$LDIR/nuclei.txt" 2>/dev/null || echo 0)"
 else
   skip nuclei

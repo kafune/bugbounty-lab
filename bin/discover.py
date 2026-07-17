@@ -229,15 +229,18 @@ def merge_private_h1(catalog):
 # ---------------------------------------------------------------------------
 def build_catalog(base, platforms):
     catalog = {}
+    failures = []
     for plat in platforms:
         fname = PLATFORM_FILES.get(plat)
         if not fname:
             print(f"  [warn] plataforma desconhecida: {plat}", file=sys.stderr)
+            failures.append(plat)
             continue
         try:
             data = fetch_json(base, fname)
-        except Exception as e:  # rede/JSON — não derruba as outras plataformas
+        except Exception as e:  # coleta as demais, mas main recusa persistencia parcial
             print(f"  [warn] falha baixando {plat}: {e}", file=sys.stderr)
+            failures.append(plat)
             continue
         norm = NORMALIZERS[plat]
         added = 0
@@ -247,9 +250,12 @@ def build_catalog(base, platforms):
                 _add(catalog, handle, prog)
                 added += 1
         print(f"  [{plat}] {added} programas com escopo web")
+        if added == 0:
+            print(f"  [warn] feed vazio para {plat}", file=sys.stderr)
+            failures.append(plat)
     merge_private_h1(catalog)
     print(f"  [privados] catálogo total: {len(catalog)} programas")
-    return catalog
+    return catalog, failures
 
 
 def carry_dates(catalog, prev, now_iso):
@@ -399,7 +405,10 @@ def main():
 
     now_iso = datetime.now(timezone.utc).isoformat()
     print("Baixando catálogo…")
-    catalog = build_catalog(base, platforms)
+    catalog, failures = build_catalog(base, platforms)
+    if failures:
+        failed = ", ".join(failures)
+        sys.exit(f"Catálogo incompleto ({failed}) — estado anterior preservado.")
     if not catalog:
         sys.exit("Nenhum programa obtido — verifique rede/plataformas.")
 

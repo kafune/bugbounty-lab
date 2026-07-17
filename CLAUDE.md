@@ -6,7 +6,8 @@ abaixo conversando comigo, sempre respeitando a **trava de escopo**.
 ## Regra dura — SCOPE-GUARD (nunca viole)
 
 - **Só toque em host que está em `targets/<handle>/scope.txt` e NÃO está em `out-of-scope.txt`.**
-  Antes de qualquer sonda/curl/tool contra um alvo, valide com `bash bin/scope-check.sh <host> <handle>`
+  Antes de qualquer sonda/curl/tool contra um alvo, valide com `bash bin/scope-check.sh <host-ou-url> <handle>`
+  (use a URL completa quando houver escopo ou exclusao limitada a path)
   (exit 0 = pode; exit 1 = pare).
 - Wildcards (`*.dominio`) autorizam subdomínios daquela raiz; nunca extrapole a raiz.
 - Mutação para fora (upload/POST/escrita em storage de terceiro, ex. Firebase write) é **outward mutation**:
@@ -37,7 +38,7 @@ O 7-Question Gate (`triage-validation`) mata achado fraco antes de virar report.
 | Testar auth da API H1 | `make check` |
 | Recon com scope-guard (baseline) | `make recon PROG=<h>` |
 | Monitorar deltas (novo subdomínio/url/nuclei) | `make monitor PROG=<h>` · `make monitor-all` |
-| Validar host antes de tocar | `bash bin/scope-check.sh <host> <h>` |
+| Validar host/URL antes de tocar | `bash bin/scope-check.sh <host-ou-url> <h>` |
 | Dashboard de achados | `make status` (ou `bin/findings.py summary`) |
 | Novo achado do template | `bin/findings.py new <h> <slug>` |
 

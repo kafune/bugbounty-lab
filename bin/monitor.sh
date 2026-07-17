@@ -36,20 +36,33 @@ diff_new() {
   fi
 }
 
-monitor_one() {
+monitor_one() (
   local prog="$1"
   local ldir="$ROOT/loot/$prog" bdir="$ROOT/loot/$prog/.baseline"
   [ -f "$ROOT/targets/$prog/scope.txt" ] || { echo "[skip] $prog sem scope.txt"; return; }
   mkdir -p "$bdir"
 
+  local lock_dir="$ROOT/state/locks"
+  mkdir -p "$lock_dir"
+  exec 9>"$lock_dir/$prog.lock"
+  if ! flock -n 9; then
+    error "$prog: outro recon ja esta usando este handle"
+    return 75
+  fi
+
   log "monitor: $prog — rodando recon..."
-  bash "$ROOT/bin/recon.sh" "$prog" >/dev/null 2>&1 || true
+  # Nao atualiza baseline nem estado quando o recon falha. A saida permanece no
+  # journal para que OnFailure tenha diagnostico util.
+  bash "$ROOT/bin/recon.sh" "$prog"
 
   local delta_total=0 summary=""
   for f in $TRACKED; do
     local out new_count
     out="$ldir/new-$DATE-${f%.txt}.txt"
-    diff_new "$ldir/$f" "$bdir/$f" > "$out" || true
+    if ! diff_new "$ldir/$f" "$bdir/$f" > "$out"; then
+      error "$prog: falha atualizando baseline de $f"
+      return 1
+    fi
     new_count="$(grep -c . "$out" 2>/dev/null)" || new_count=0
     if [ "$new_count" -gt 0 ]; then
       delta_total=$((delta_total + new_count))
@@ -70,7 +83,7 @@ monitor_one() {
   else
     log "$prog: sem mudança de superfície."
   fi
-}
+)
 
 if [ -n "${1:-}" ]; then
   monitor_one "$1"

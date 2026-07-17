@@ -3,6 +3,9 @@
 
 # Segredos e credenciais — NUNCA commitar
 .env
+# qualquer variante (.env.save, .env.local, .env.bak…) menos o exemplo versionado
+.env.*
+!.env.example
 *.token
 token.txt
 configs/*.conf
