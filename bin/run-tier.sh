@@ -51,6 +51,11 @@ NUCLEI_AUTOMATIC_SCAN="${NUCLEI_AUTOMATIC_SCAN:-1}"
 # ciclo). recon.sh já se auto-limita por etapa; isto é o backstop de fora.
 TIER1_MAX_PER_HOST="${TIER1_MAX_PER_HOST:-1200}"   # 20 min por host no Tier 1 (headroom p/ alvos grandes)
 TIER2_MAX_PER_BATCH="${TIER2_MAX_PER_BATCH:-${TIER2_MAX_PER_HOST:-1800}}" # compat: nome antigo
+# Teto GLOBAL de wall-clock do tier2 (todos os handles somados). Backstop pro
+# pior caso: com muitos handles/lotes, o teto-por-lote sozinho nao limita o
+# total. 0 = sem teto. Ao estourar, para de iniciar lotes/handles e preserva o
+# que ja foi encontrado (mesma filosofia do timeout-por-lote).
+TIER2_MAX_TOTAL="${TIER2_MAX_TOTAL:-0}"
 timed() { if have timeout; then timeout "$@"; else shift; "$@"; fi; }
 
 case "$NUCLEI_BATCH_SIZE" in
@@ -58,6 +63,9 @@ case "$NUCLEI_BATCH_SIZE" in
 esac
 case "$TIER2_MAX_PER_BATCH" in
   ''|*[!0-9]*|0) error "TIER2_MAX_PER_BATCH deve ser um inteiro positivo"; exit 1 ;;
+esac
+case "$TIER2_MAX_TOTAL" in
+  ''|*[!0-9]*) error "TIER2_MAX_TOTAL deve ser um inteiro >= 0 (0 = sem teto)"; exit 1 ;;
 esac
 
 # handles tier_eligible ordenados por score efetivo (Fase D)
@@ -196,6 +204,11 @@ tier2_one() (
 
   local batch batch_out batch_no=0 batch_targets truncated=0
   for batch in "$work"/targets-*; do
+    if [ "$TIER2_MAX_TOTAL" -gt 0 ] && [ "$(date +%s)" -ge "${TIER2_DEADLINE:-0}" ]; then
+      truncated=$((truncated + 1))
+      log "[warn] tier2 $h: teto global (${TIER2_MAX_TOTAL}s) atingido; parando após $batch_no/$total_batches lote(s) e preservando parciais"
+      break
+    fi
     batch_no=$((batch_no + 1))
     batch_targets="$(grep -c . "$batch" 2>/dev/null)" || batch_targets=0
     batch_out="$work/results-$batch_no.txt"
@@ -267,10 +280,17 @@ run_tier2() {
   fi
   local handles failures=0; handles="$(eligible_handles)"
   [ -z "$handles" ] && { log "tier2: nenhum handle tier_eligible (rode discover)"; return; }
+  # Deadline global compartilhado com tier2_one (subshell herda a variavel).
+  TIER2_DEADLINE=$(( $(date +%s) + TIER2_MAX_TOTAL ))
+  [ "$TIER2_MAX_TOTAL" -gt 0 ] && log "tier2: teto global de wall-clock ativo (${TIER2_MAX_TOTAL}s)"
   # serializado: um handle (um nuclei) por vez; falha de um não aborta o tier.
   # fd 3 pelo mesmo motivo do tier1: nuclei drena o stdin herdado.
   while read -r h <&3; do
     [ -n "$h" ] || continue
+    if [ "$TIER2_MAX_TOTAL" -gt 0 ] && [ "$(date +%s)" -ge "$TIER2_DEADLINE" ]; then
+      log "[warn] tier2: teto global (${TIER2_MAX_TOTAL}s) atingido; handles restantes ficam pro próximo ciclo"
+      break
+    fi
     if ! tier2_one "$h"; then
       failures=$((failures + 1))
       log "[warn] tier2 $h falhou — segue"
