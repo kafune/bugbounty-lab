@@ -55,31 +55,53 @@ monitor_one() (
   # journal para que OnFailure tenha diagnostico util.
   bash "$ROOT/bin/recon.sh" "$prog"
 
-  local delta_total=0 summary=""
+  # Diffa TODOS os tracks pro disco; conta cada um. Classifica por tier de sinal:
+  #   ALTO   nuclei (hit novo = candidato a report), subs (superfície nova)
+  #   MÉDIO  live-urls (host que subiu agora)
+  #   RUÍDO  urls (colheita histórica do gau/wayback; muda a cada run)
+  # Só sinal ALTO/MÉDIO dispara o webhook. urls continua gravado no disco pra
+  # grep/gf posterior, mas vira rodapé — nunca dispara ping sozinho.
+  local n_subs=0 n_live=0 n_urls=0 n_nuclei=0
   for f in $TRACKED; do
-    local out new_count
+    local out c
     out="$ldir/new-$DATE-${f%.txt}.txt"
     if ! diff_new "$ldir/$f" "$bdir/$f" > "$out"; then
       error "$prog: falha atualizando baseline de $f"
       return 1
     fi
-    new_count="$(grep -c . "$out" 2>/dev/null)" || new_count=0
-    if [ "$new_count" -gt 0 ]; then
-      delta_total=$((delta_total + new_count))
-      summary="${summary}  +${new_count} ${f%.txt}\n"
-      log "  novo em ${f%.txt}: $new_count"
+    c="$(grep -c . "$out" 2>/dev/null)" || c=0
+    if [ "$c" -gt 0 ]; then
+      log "  novo em ${f%.txt}: $c"
+      case "$f" in
+        subs.txt)      n_subs=$c ;;
+        live-urls.txt) n_live=$c ;;
+        urls.txt)      n_urls=$c ;;
+        nuclei.txt)    n_nuclei=$c ;;
+      esac
     else
       rm -f "$out"      # sem delta, não deixa arquivo vazio poluindo
     fi
   done
 
-  if [ "$delta_total" -gt 0 ]; then
-    ok "$prog: $delta_total novidades (loot/$prog/new-$DATE-*.txt)"
+  # Headline ordenada por sinal (alto→médio); urls (firehose) só como rodapé.
+  local signal_total=$((n_nuclei + n_subs + n_live))
+  local headline=""
+  [ "$n_nuclei" -gt 0 ] && headline="${headline} · 🔴 +${n_nuclei} nuclei"
+  [ "$n_subs"   -gt 0 ] && headline="${headline} · 🟠 +${n_subs} subs"
+  [ "$n_live"   -gt 0 ] && headline="${headline} · 🟡 +${n_live} live-urls"
+  headline="${headline# · }"                    # tira o separador inicial
+  local footer=""
+  [ "$n_urls" -gt 0 ] && footer="  (+${n_urls} urls → disco)"
+
+  if [ "$signal_total" -gt 0 ]; then
+    ok "$prog: ${headline}${footer} (loot/$prog/new-$DATE-*.txt)"
     if [ -f "$NOTIFY" ]; then
       local msg
-      msg="$(printf '[bugbounty-lab] %s: %d novidades\n%b' "$prog" "$delta_total" "$summary")"
+      msg="$(printf '[bugbounty-lab] %s: %s%s' "$prog" "$headline" "$footer")"
       bash "$NOTIFY" "$msg" || true
     fi
+  elif [ "$n_urls" -gt 0 ]; then
+    log "$prog: só +${n_urls} urls (firehose gau) — gravado no disco, sem ping."
   else
     log "$prog: sem mudança de superfície."
   fi
