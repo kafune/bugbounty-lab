@@ -1,0 +1,32 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "enabled_providers": ["ollama"],
+  "provider": {
+    "ollama": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Ollama (local)",
+      "options": { "baseURL": "http://127.0.0.1:11434/v1" },
+      "models": {
+        "qwen3:8b": {
+          "name": "Qwen3 8B (local)",
+          "limit": { "context": 16384, "output": 4096 }
+        }
+      }
+    }
+  },
+  "model": "ollama/qwen3:8b",
+  "small_model": "ollama/qwen3:8b",
+  "default_agent": "plan",
+  "share": "disabled",
+  "autoupdate": false,
+  "lsp": true,
+  "compaction": { "auto": true, "prune": true, "reserved": 4096 },
+  "permission": {
+    "edit": "ask",
+    "bash": "ask",
+    "webfetch": "deny",
+    "websearch": "deny",
+    "external_directory": "deny",
+    "task": "deny"
+  }
+}
