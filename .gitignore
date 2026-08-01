@@ -1,5 +1,6 @@
 # venv Python
 .venv/
+.worktrees/
 
 # Segredos e credenciais — NUNCA commitar
 .env
