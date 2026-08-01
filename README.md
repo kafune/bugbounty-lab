@@ -178,6 +178,20 @@ Achados ficam em `findings/<handle>/*.md` (git-ignored). Antes de `--submit`, pa
 Abra `claude` na raiz e use os slash-commands: `/kickoff <handle>`, `/monitor <handle>`,
 `/status`, `/scope-check <host> <handle>`. O `CLAUDE.md` ensina o agente a respeitar a trava de escopo.
 
+## OpenCode local (Qwen3 8B)
+
+Use o modelo local para explorar o laboratório e preparar ações com o agente `recon`:
+
+```bash
+ollama run qwen3:8b "Reply with exactly: local model ready"
+opencode agent list
+make test-opencode
+opencode run --agent explore "Liste os diretórios de topo e sua responsabilidade. Não modifique arquivos."
+opencode run --agent recon "HANDLE=<handle>. Execute somente o scope-check de <host-ou-url>."
+```
+
+O agente `recon` pausa para aprovação e nunca autoriza ação externa sem um scope check aprovado e aprovação explícita.
+
 ## Segurança operacional
 
 - `.env`, `targets/`, `loot/`, `state/` e `configs/*.conf` são **git-ignored**. Nunca commite escopo de programa privado, token, achado, ou o IP/host da VPS.
