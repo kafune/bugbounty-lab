@@ -1,49 +1,49 @@
-# OpenCode local-first agent design
+# OpenCode local-first agent design for Qwen3 8B
 
 ## Goal
 
-Configure OpenCode to work as a capable, entirely local coding and bug-bounty assistant on the available RTX 3060 (12 GB VRAM), 16 GB system RAM, and Ollama installation.
+Configure OpenCode to work as a constrained, entirely local coding and bug-bounty assistant using Qwen3 8B. The design compensates for a model that is less reliable than Claude Code at following long instructions and selecting tools.
 
 ## Model strategy
 
-- Pull and use `qwen3:14b` as the primary model for `build`, `plan`, and `explore`.
-- Retain `qwen2.5-coder:7b` as an explicitly selectable fast model for small, focused edits.
-- Do not install 24B+ or 30B+ models as default agents: they exceed available VRAM and would rely heavily on slow CPU/RAM offload.
+- Use `qwen3:8b` as the only default model for every agent.
+- Keep prompts short, imperative, and phase-specific. Each invocation has one objective and a fixed response format.
+- Do not rely on the model to remember authorization or scope between turns. Enforce those limits with agent permissions and repository scripts.
 - Use a modest context length (16K tokens) to preserve interactive speed and headroom in VRAM.
 
 ## Agent roles
 
 | Agent | Mode | Responsibility | Writes files? |
 | --- | --- | --- | --- |
-| `build` | primary | Implement, test, and explain changes | Yes, with approval gates |
-| `plan` | primary | Investigate requirements and propose an implementation plan | No |
-| `explore` | subagent | Map codebases and report dependencies, workflows, and key logic | No |
-| `review` | subagent | Review diffs for defects, regressions, and maintainability | No |
-| `bugbounty` | subagent | Analyze the current lab within its scope guard and report evidence-based findings | No by default |
+| `plan` | primary | Turn one user request into a short, explicit next-step plan | No |
+| `explore` | subagent | Map codebases and report concrete evidence with paths | No |
+| `bugbounty` | subagent | Analyze local program artifacts and apply the 7-Question Gate | No |
+| `recon` | subagent | Propose or execute one authorized, scope-checked recon step | Only via explicit confirmation |
 
 ## Safety model
 
-- Reading source files, search, LSP, and non-mutating local inspection remain available.
-- `.env` files remain protected and need an explicit approval to read.
-- Edits by `build` require approval; no other agent may edit project files.
-- All commands initially require approval, except safe read-only inspection commands such as `git status`, `git diff`, `rg`, `find`, and test/listing commands.
-- Commits, pushes, remote network calls, and external directories always require approval.
-- The `bugbounty` agent must comply with the repository's `CLAUDE.md`: verify scope before contacting a target, request confirmation for outward mutation, and skip excluded vulnerability classes.
+- All OpenCode configuration and agent definitions live in `.opencode/` in this repository; the setup does not modify global OpenCode files.
+- Reading source files, search, LSP, and non-mutating local inspection remain available. `.env` is protected and requires explicit approval to read.
+- No agent may edit files, commit, push, access external directories, or invoke a network-capable command without explicit approval.
+- `plan`, `explore`, and `bugbounty` have no network-capable tools. `bugbounty` is local-only: it may inspect `CLAUDE.md`, scope files, loot, findings, and scripts, but cannot contact a target.
+- `recon` is the only agent that may request network activity. It must first run `bash bin/scope-check.sh <host-or-url> <handle>`, present the passing result, and stop before outward mutation. The user must explicitly approve each recon step.
+- The `bugbounty` and `recon` prompts repeat the repository's scope guard, confirmation rule for outward mutation, and excluded vulnerability classes in compact form.
 
 ## Configuration layout
 
-- Update `~/.config/opencode/opencode.json` with local model registration, default agent, private sharing, LSP, compaction, global permissions, and agent overrides.
-- Add agent prompts in `~/.config/opencode/agents/` so each role has a focused system prompt and independent permissions.
-- Leave the repository's existing `CLAUDE.md` unchanged; OpenCode reads it as project guidance.
+- Add `.opencode/opencode.json` with Ollama model registration, a `qwen3:8b` default, private sharing, LSP, compaction, and deny-by-default permissions.
+- Add prompts in `.opencode/agents/` so each role has a focused system prompt and independent permissions.
+- Leave the repository's existing `CLAUDE.md` unchanged; it remains the operational policy that the OpenCode prompts reinforce.
 
 ## Verification
 
-1. Pull `qwen3:14b` with Ollama and verify it responds locally.
+1. Verify that `qwen3:8b` responds locally through Ollama.
 2. Validate the OpenCode configuration is loadable with `opencode agent list`.
-3. Confirm the five intended agents and their modes/permission restrictions appear in that output.
-4. Smoke-test one read-only exploration prompt and ensure that no file changes occur.
+3. Confirm `plan`, `explore`, `bugbounty`, and `recon` appear with the intended mode and permission restrictions.
+4. Smoke-test a read-only exploration prompt and confirm that no file changes occur.
+5. Confirm that a recon request cannot proceed to a host interaction without the scope-check and an explicit user approval.
 
 ## Non-goals
 
-- No cloud provider, API key, telemetry-dependent feature, or remote model fallback.
+- No cloud provider, API key, telemetry-dependent feature, remote model fallback, or automatic subagent dispatch.
 - No automatic committing, pushing, scanning, or mutation of third-party systems.
