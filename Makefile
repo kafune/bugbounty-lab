@@ -9,7 +9,7 @@ LOADENV := set -a; [ -f .env ] && . ./.env; set +a;
 
 .PHONY: help sync recon monitor monitor-all status clean venv check test \
         scope-monitor discover discover-dry catalog tier1 tier2 \
-        install-timers loop-status
+        install-timers loop-status test-opencode
 
 help:
 	@echo "make sync                 -> puxa escopo de TODOS os programas do H1"
@@ -49,6 +49,9 @@ check:
 
 test:
 	@bash tests/test_pipeline.sh
+
+test-opencode:
+	@bash tests/test_opencode_setup.sh
 
 sync:
 	@$(LOADENV) $(PY) bin/h1sync.py $(if $(HANDLE),--handle $(HANDLE),)
